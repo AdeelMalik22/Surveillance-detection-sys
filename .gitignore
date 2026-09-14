@@ -7,4 +7,5 @@ config.yaml
 *.db
 *.sqlite3
 *.pt
+annotated.jpg
 .env
