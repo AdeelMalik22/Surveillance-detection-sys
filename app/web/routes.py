@@ -60,9 +60,10 @@ def _annotated_frames(session_id: str, path: Path):
                     if detection.object_class in counts:
                         counts[detection.object_class] += 1
                 x1, y1, x2, y2 = map(int, detection.bbox)
-                cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                color = (0, 0, 255) if detection.object_class in {"car", "truck"} else (0, 255, 0)
+                cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
                 label = f"{detection.object_class} #{detection.track_id} {detection.confidence:.2f}"
-                cv2.putText(frame, label, (x1, max(20, y1 - 8)), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 255, 0), 2)
+                cv2.putText(frame, label, (x1, max(20, y1 - 8)), cv2.FONT_HERSHEY_SIMPLEX, 0.55, color, 2)
             counts["total"] = sum(counts[key] for key in ("person", "car", "motorcycle", "bus", "truck"))
             SESSION_COUNTS[session_id] = counts.copy()
             ok, encoded = cv2.imencode(".jpg", frame)
