@@ -16,8 +16,32 @@ from ..tracking import IoUTracker
 router = APIRouter()
 UPLOADS = Path(tempfile.gettempdir()) / "surveillance-mvp-uploads"
 UPLOADS.mkdir(parents=True, exist_ok=True)
+CLIPS = UPLOADS / "clips"
+CLIPS.mkdir(parents=True, exist_ok=True)
 EVENTS = EventStore("events.db")
 SESSION_EVENTS: dict[str, list[dict]] = {}
+
+
+def _save_clip(source: Path, session_id: str, event_id: int, at_seconds: float, before: float = 3, after: float = 5) -> str | None:
+    reader = cv2.VideoCapture(str(source))
+    fps = reader.get(cv2.CAP_PROP_FPS) or 25.0
+    width = int(reader.get(cv2.CAP_PROP_FRAME_WIDTH)); height = int(reader.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    if width <= 0 or height <= 0:
+        reader.release(); return None
+    start = max(0.0, at_seconds - before); end = at_seconds + after
+    reader.set(cv2.CAP_PROP_POS_MSEC, start * 1000)
+    output_path = CLIPS / f"{session_id}-{event_id}.mp4"
+    writer = cv2.VideoWriter(str(output_path), cv2.VideoWriter_fourcc(*"mp4v"), fps, (width, height))
+    try:
+        while reader.isOpened():
+            current = reader.get(cv2.CAP_PROP_POS_MSEC) / 1000
+            if current > end: break
+            ok, frame = reader.read()
+            if not ok: break
+            writer.write(frame)
+    finally:
+        reader.release(); writer.release()
+    return output_path.name if output_path.exists() and output_path.stat().st_size else None
 
 
 @router.get("/ui", include_in_schema=False)
@@ -61,6 +85,9 @@ def _annotated_frames(session_id: str, path: Path, start_seconds: float = 0):
                 if detection.track_id not in seen_tracks:
                     seen_tracks.add(detection.track_id)
                     event = EVENTS.add(session_id, "camera-view", detection.object_class, detection.confidence, detection.bbox)
+                    event["clip_url"] = f"/api/events/{session_id}/{event['id']}/clip"
+                    clip_name = _save_clip(path, session_id, event["id"], capture.get(cv2.CAP_PROP_POS_MSEC) / 1000)
+                    event["clip_available"] = clip_name is not None
                     SESSION_EVENTS.setdefault(session_id, []).append(event)
                 x1, y1, x2, y2 = map(int, detection.bbox)
                 cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
@@ -86,3 +113,11 @@ def session_events(session_id: str):
     if session_id not in SESSION_EVENTS:
         raise HTTPException(404, "upload session not found")
     return {"count": len(SESSION_EVENTS[session_id]), "events": SESSION_EVENTS[session_id]}
+
+
+@router.get("/api/events/{session_id}/{event_id}/clip")
+def event_clip(session_id: str, event_id: int):
+    clip = CLIPS / f"{session_id}-{event_id}.mp4"
+    if not clip.exists():
+        raise HTTPException(404, "event clip is not available")
+    return FileResponse(clip, media_type="video/mp4", filename=clip.name)
