@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Surveillance Detection</title>
+  <style>
+    :root { color-scheme: dark; font-family: Inter, system-ui, sans-serif; } body { margin:0; background:#101418; color:#e8eef2; }
+    main { max-width:1100px; margin:32px auto; padding:0 20px; } h1 { margin-bottom:6px; } p { color:#aab7c0; }
+    .panel { background:#192127; border:1px solid #2b3942; border-radius:14px; padding:20px; margin-top:22px; }
+    input, button { border-radius:8px; padding:11px 14px; border:1px solid #40515c; background:#222e36; color:inherit; }
+    button { background:#3d8bfd; border:0; cursor:pointer; font-weight:700; } button:disabled { opacity:.5; cursor:wait; }
+    #stream { width:100%; max-height:70vh; object-fit:contain; background:#07090a; border-radius:10px; margin-top:18px; }
+    #status { margin-top:12px; color:#8fd3a8; min-height:1.4em; }
+  </style>
+</head>
+<body><main>
+  <h1>AI Surveillance Detection</h1><p>Upload a video and watch the backend identify people and vehicles in real time.</p>
+  <section class="panel">
+    <input id="file" type="file" accept="video/*"><button id="start">Start detection</button>
+    <div id="status">Choose a video file to begin.</div><img id="stream" alt="Annotated detection stream">
+  </section>
+  <script>
+    const file = document.getElementById('file'), start = document.getElementById('start'), status = document.getElementById('status'), stream = document.getElementById('stream');
+    start.onclick = async () => {
+      if (!file.files[0]) return status.textContent = 'Select a video first.';
+      start.disabled = true; status.textContent = 'Uploading video…';
+      const body = new FormData(); body.append('file', file.files[0]);
+      try { const response = await fetch('/api/uploads', {method:'POST', body}); const data = await response.json(); if (!response.ok) throw new Error(data.detail || 'Upload failed'); stream.src = data.stream_url; status.textContent = 'Detection running — green boxes show class, track ID, and confidence.'; }
+      catch (error) { status.textContent = error.message; start.disabled = false; }
+    };
+  </script>
+</main></body></html>

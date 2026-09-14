@@ -7,6 +7,7 @@ from pydantic import BaseModel
 from .capture import CaptureWorker
 from .config import Settings, ZoneConfig, load_settings
 from .events import EventStore
+from .web.routes import router as web_router
 
 settings: Settings = load_settings(); store = EventStore(settings.database); workers = {}
 zones = {camera.id: {zone.id: zone for zone in camera.zones} for camera in settings.cameras}
@@ -20,6 +21,7 @@ async def lifespan(_):
 
 app = FastAPI(title="AI Surveillance MVP", version="0.1.0", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+app.include_router(web_router)
 
 @app.get("/health")
 def health(): return {"status": "ok", "model": settings.model, "model_loaded": Path(settings.model).exists()}
