@@ -38,13 +38,9 @@ async def upload_video(file: UploadFile = File(...)):
     return {"session_id": session_id, "filename": file.filename, "stream_url": f"/api/stream/{session_id}"}
 
 
-def _annotated_frames(session_id: str, path: Path, start_seconds: float = 0):
+def _annotated_frames(session_id: str, path: Path):
     capture = cv2.VideoCapture(str(path))
-    if start_seconds > 0:
-        capture.set(cv2.CAP_PROP_POS_MSEC, start_seconds * 1000)
-    # The browser stream prioritizes responsiveness on CPU. The standalone
-    # detection script can use a larger image size for maximum recall.
-    detector = Detector(confidence=0.3, image_size=416)
+    detector = Detector(confidence=0.3, image_size=960)
     tracker = IoUTracker()
     frame_number = 0
     tracked_detections = []
@@ -54,13 +50,8 @@ def _annotated_frames(session_id: str, path: Path, start_seconds: float = 0):
             ok, frame = capture.read()
             if not ok:
                 break
-            if frame_number % 8 == 0:
+            if frame_number % 3 == 0:
                 tracked_detections = tracker.update(detector.detect(frame))
-            else:
-                # Drop intermediate source frames instead of queuing stale
-                # images behind a slower CPU inference pass.
-                frame_number += 1
-                continue
             frame_number += 1
             for detection in tracked_detections:
                 if detection.track_id not in seen_tracks:
@@ -71,7 +62,7 @@ def _annotated_frames(session_id: str, path: Path, start_seconds: float = 0):
                 cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
                 label = f"{detection.object_class} #{detection.track_id} {detection.confidence:.2f}"
                 cv2.putText(frame, label, (x1, max(20, y1 - 8)), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 255, 0), 2)
-            ok, encoded = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 75])
+            ok, encoded = cv2.imencode(".jpg", frame)
             if ok:
                 yield b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + encoded.tobytes() + b"\r\n"
     finally:
@@ -79,11 +70,11 @@ def _annotated_frames(session_id: str, path: Path, start_seconds: float = 0):
 
 
 @router.get("/api/stream/{session_id}")
-def stream(session_id: str, start: float = 0):
+def stream(session_id: str):
     matches = list(UPLOADS.glob(f"{session_id}.*"))
     if not matches:
         raise HTTPException(404, "upload session not found")
-    return StreamingResponse(_annotated_frames(session_id, matches[0], max(0, start)), media_type="multipart/x-mixed-replace; boundary=frame")
+    return StreamingResponse(_annotated_frames(session_id, matches[0]), media_type="multipart/x-mixed-replace; boundary=frame")
 
 
 @router.get("/api/events/{session_id}")
