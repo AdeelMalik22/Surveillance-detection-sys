@@ -33,9 +33,13 @@ class Detector:
             # Some Python 3.11 release-candidate builds lack APIs expected by
             # current PyTorch. Stable Python 3.11 remains the recommended fix.
             if not hasattr(sys, "get_int_max_str_digits"):
-                sys.get_int_max_str_digits = lambda: 4300
+                def get_int_max_str_digits() -> int:
+                    return 4300
+                sys.get_int_max_str_digits = get_int_max_str_digits
             if not hasattr(sys, "set_int_max_str_digits"):
-                sys.set_int_max_str_digits = lambda _value: None
+                def set_int_max_str_digits(maxdigits: int) -> None:
+                    return None
+                sys.set_int_max_str_digits = set_int_max_str_digits
             from ultralytics import YOLO
         except ImportError as exc:
             raise RuntimeError("Ultralytics is required for detection; install it with `pip install ultralytics`") from exc
