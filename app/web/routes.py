@@ -10,14 +10,11 @@ from fastapi import APIRouter, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
 
 from ..detector import Detector
-from ..events import EventStore
 from ..tracking import IoUTracker
 
 router = APIRouter()
 UPLOADS = Path(tempfile.gettempdir()) / "surveillance-mvp-uploads"
 UPLOADS.mkdir(parents=True, exist_ok=True)
-EVENTS = EventStore("events.db")
-SESSION_EVENTS: dict[str, list[dict]] = {}
 
 
 @router.get("/ui", include_in_schema=False)
@@ -34,17 +31,15 @@ async def upload_video(file: UploadFile = File(...)):
     destination = UPLOADS / f"{session_id}{suffix}"
     with destination.open("wb") as output:
         shutil.copyfileobj(file.file, output)
-    SESSION_EVENTS[session_id] = []
     return {"session_id": session_id, "filename": file.filename, "stream_url": f"/api/stream/{session_id}"}
 
 
-def _annotated_frames(session_id: str, path: Path):
+def _annotated_frames(path: Path):
     capture = cv2.VideoCapture(str(path))
     detector = Detector(confidence=0.3, image_size=960)
     tracker = IoUTracker()
     frame_number = 0
     tracked_detections = []
-    seen_tracks: set[int] = set()
     try:
         while True:
             ok, frame = capture.read()
@@ -54,10 +49,6 @@ def _annotated_frames(session_id: str, path: Path):
                 tracked_detections = tracker.update(detector.detect(frame))
             frame_number += 1
             for detection in tracked_detections:
-                if detection.track_id not in seen_tracks:
-                    seen_tracks.add(detection.track_id)
-                    event = EVENTS.add(session_id, "camera-view", detection.object_class, detection.confidence, detection.bbox)
-                    SESSION_EVENTS.setdefault(session_id, []).append(event)
                 x1, y1, x2, y2 = map(int, detection.bbox)
                 cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
                 label = f"{detection.object_class} #{detection.track_id} {detection.confidence:.2f}"
@@ -74,11 +65,4 @@ def stream(session_id: str):
     matches = list(UPLOADS.glob(f"{session_id}.*"))
     if not matches:
         raise HTTPException(404, "upload session not found")
-    return StreamingResponse(_annotated_frames(session_id, matches[0]), media_type="multipart/x-mixed-replace; boundary=frame")
-
-
-@router.get("/api/events/{session_id}")
-def session_events(session_id: str):
-    if session_id not in SESSION_EVENTS:
-        raise HTTPException(404, "upload session not found")
-    return {"count": len(SESSION_EVENTS[session_id]), "events": SESSION_EVENTS[session_id]}
+    return StreamingResponse(_annotated_frames(matches[0]), media_type="multipart/x-mixed-replace; boundary=frame")
