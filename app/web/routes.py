@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import shutil
-import threading
 import tempfile
 import uuid
 from pathlib import Path
@@ -43,11 +42,6 @@ def _save_clip(source: Path, session_id: str, event_id: int, at_seconds: float, 
     finally:
         reader.release(); writer.release()
     return output_path.name if output_path.exists() and output_path.stat().st_size else None
-
-
-def _create_event_clip(session_id: str, source: Path, event: dict, at_seconds: float) -> None:
-    clip_name = _save_clip(source, session_id, event["id"], at_seconds)
-    event["clip_available"] = clip_name is not None
 
 
 @router.get("/ui", include_in_schema=False)
@@ -97,9 +91,9 @@ def _annotated_frames(session_id: str, path: Path, start_seconds: float = 0):
                     seen_tracks.add(detection.track_id)
                     event = EVENTS.add(session_id, "camera-view", detection.object_class, detection.confidence, detection.bbox)
                     event["clip_url"] = f"/api/events/{session_id}/{event['id']}/clip"
-                    event["clip_available"] = False
+                    clip_name = _save_clip(path, session_id, event["id"], capture.get(cv2.CAP_PROP_POS_MSEC) / 1000)
+                    event["clip_available"] = clip_name is not None
                     SESSION_EVENTS.setdefault(session_id, []).append(event)
-                    threading.Thread(target=_create_event_clip, args=(session_id, path, event, capture.get(cv2.CAP_PROP_POS_MSEC) / 1000), daemon=True).start()
                 x1, y1, x2, y2 = map(int, detection.bbox)
                 cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
                 label = f"{detection.object_class} #{detection.track_id} {detection.confidence:.2f}"
