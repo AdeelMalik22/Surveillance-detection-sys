@@ -23,7 +23,8 @@ class CameraConfig(BaseModel):
 class Settings(BaseModel):
     model: str = "yolov8n.pt"
     device: str = "auto"
-    confidence: float = Field(0.5, ge=0, le=1)
+    confidence: float = Field(0.3, ge=0, le=1)
+    image_size: int = Field(960, ge=320, le=1920)
     target_fps: float = Field(8, gt=0, le=60)
     zone_point: str = "bottom_center"
     database: str = "events.db"

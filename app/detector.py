@@ -26,9 +26,11 @@ class DetectionResult:
 
 
 class Detector:
-    def __init__(self, model_path: str = "yolov8n.pt", confidence: float = 0.5, device: str = "auto"):
+    def __init__(self, model_path: str = "yolov8n.pt", confidence: float = 0.3, device: str = "auto", image_size: int = 960):
         if not 0 <= confidence <= 1:
             raise ValueError("confidence must be between 0 and 1")
+        if image_size < 320:
+            raise ValueError("image_size must be at least 320")
         try:
             # Some Python 3.11 release-candidate builds lack APIs expected by
             # current PyTorch. Stable Python 3.11 remains the recommended fix.
@@ -46,6 +48,7 @@ class Detector:
 
         self.model_path = model_path
         self.confidence = confidence
+        self.image_size = image_size
         self.device = None if device == "auto" else device
         self.model = YOLO(model_path)
 
@@ -53,6 +56,7 @@ class Detector:
         results = self.model.predict(
             source=frame,
             conf=self.confidence,
+            imgsz=self.image_size,
             classes=list(SUPPORTED_CLASSES),
             device=self.device,
             verbose=False,

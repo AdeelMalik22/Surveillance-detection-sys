@@ -1,6 +1,7 @@
 model: yolov8n.pt
 device: auto
-confidence: 0.5
+confidence: 0.3
+image_size: 960
 target_fps: 8
 zone_point: bottom_center
 database: events.db

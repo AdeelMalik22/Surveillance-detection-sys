@@ -36,7 +36,7 @@ async def upload_video(file: UploadFile = File(...)):
 
 def _annotated_frames(path: Path):
     capture = cv2.VideoCapture(str(path))
-    detector = Detector()
+    detector = Detector(confidence=0.3, image_size=960)
     tracker = IoUTracker()
     frame_number = 0
     tracked_detections = []
