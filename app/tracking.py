@@ -52,5 +52,6 @@ class IoUTracker:
         for detection_index, detection in enumerate(detections):
             if detection_index not in assignments:
                 self._tracks.append(_Track(self._next_id, detection.object_class, detection.bbox)); assignments[detection_index] = len(self._tracks) - 1; self._next_id += 1
+        track_ids = [self._tracks[assignments[index]].track_id for index in range(len(detections))]
         self._tracks = [track for track in self._tracks if track.missed <= self.max_age]
-        return [Detection(d.object_class, d.confidence, d.bbox, self._tracks[index].track_id) for index, d in enumerate(detections) for index in [assignments[index]]]
+        return [Detection(d.object_class, d.confidence, d.bbox, track_ids[index]) for index, d in enumerate(detections)]
