@@ -85,3 +85,12 @@ def counts(session_id: str):
     if session_id not in SESSION_COUNTS:
         raise HTTPException(404, "upload session not found")
     return SESSION_COUNTS[session_id]
+
+
+@router.post("/api/reset/{session_id}")
+def reset_counts(session_id: str):
+    if session_id not in SESSION_COUNTS:
+        raise HTTPException(404, "upload session not found")
+    SESSION_COUNTS[session_id] = {"person": 0, "car": 0, "motorcycle": 0, "bus": 0, "truck": 0, "total": 0}
+    SESSION_SEEN_TRACKS[session_id] = set()
+    return SESSION_COUNTS[session_id]
