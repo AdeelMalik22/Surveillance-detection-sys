@@ -1,0 +1,12 @@
+model: yolov8n.pt
+device: auto
+confidence: 0.5
+target_fps: 8
+zone_point: bottom_center
+database: events.db
+cameras:
+  - id: entrance
+    url: ${ENTRANCE_RTSP_URL}
+    zones:
+      - id: restricted-area
+        polygon: [[100, 100], [500, 100], [500, 400], [100, 400]]
