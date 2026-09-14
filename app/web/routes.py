@@ -42,7 +42,9 @@ def _annotated_frames(session_id: str, path: Path, start_seconds: float = 0):
     capture = cv2.VideoCapture(str(path))
     if start_seconds > 0:
         capture.set(cv2.CAP_PROP_POS_MSEC, start_seconds * 1000)
-    detector = Detector(confidence=0.3, image_size=960)
+    # The browser stream prioritizes responsiveness on CPU. The standalone
+    # detection script can use a larger image size for maximum recall.
+    detector = Detector(confidence=0.3, image_size=640)
     tracker = IoUTracker()
     frame_number = 0
     tracked_detections = []
@@ -52,7 +54,7 @@ def _annotated_frames(session_id: str, path: Path, start_seconds: float = 0):
             ok, frame = capture.read()
             if not ok:
                 break
-            if frame_number % 3 == 0:
+            if frame_number % 5 == 0:
                 tracked_detections = tracker.update(detector.detect(frame))
             frame_number += 1
             for detection in tracked_detections:
@@ -64,7 +66,7 @@ def _annotated_frames(session_id: str, path: Path, start_seconds: float = 0):
                 cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
                 label = f"{detection.object_class} #{detection.track_id} {detection.confidence:.2f}"
                 cv2.putText(frame, label, (x1, max(20, y1 - 8)), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 255, 0), 2)
-            ok, encoded = cv2.imencode(".jpg", frame)
+            ok, encoded = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 75])
             if ok:
                 yield b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + encoded.tobytes() + b"\r\n"
     finally:

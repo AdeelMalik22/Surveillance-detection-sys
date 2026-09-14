@@ -2,7 +2,7 @@
 
 FastAPI MVP for RTSP or local-video capture, YOLO person/vehicle detection, polygon zones, and event storage.
 
-Use a stable Python 3.11 release for PyTorch. The detector contains a small compatibility fallback for older 3.11 release-candidate environments, but recreating `.venv` with stable Python is preferred. Crowded or distant scenes use a lower confidence threshold (`0.3`) and larger inference size (`960`) to improve small-person recall; this costs CPU time.
+Use a stable Python 3.11 release for PyTorch. The detector contains a small compatibility fallback for older 3.11 release-candidate environments, but recreating `.venv` with stable Python is preferred. Crowded or distant scenes use a lower confidence threshold (`0.3`) and larger inference size (`960`) to improve small-person recall; the live browser stream intentionally uses `640` and detects every fifth frame for better CPU responsiveness.
 
 ```bash
 cp config.example.yaml config.yaml
