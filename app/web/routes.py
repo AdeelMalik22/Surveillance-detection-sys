@@ -74,7 +74,7 @@ def _annotated_frames(session_id: str, path: Path, start_seconds: float = 0):
         capture.set(cv2.CAP_PROP_POS_MSEC, start_seconds * 1000)
     # The browser stream prioritizes responsiveness on CPU. The standalone
     # detection script can use a larger image size for maximum recall.
-    detector = Detector(confidence=0.3, image_size=640)
+    detector = Detector(confidence=0.3, image_size=416)
     tracker = IoUTracker()
     frame_number = 0
     tracked_detections = []
@@ -84,8 +84,13 @@ def _annotated_frames(session_id: str, path: Path, start_seconds: float = 0):
             ok, frame = capture.read()
             if not ok:
                 break
-            if frame_number % 5 == 0:
+            if frame_number % 8 == 0:
                 tracked_detections = tracker.update(detector.detect(frame))
+            else:
+                # Drop intermediate source frames instead of queuing stale
+                # images behind a slower CPU inference pass.
+                frame_number += 1
+                continue
             frame_number += 1
             for detection in tracked_detections:
                 if detection.track_id not in seen_tracks:
