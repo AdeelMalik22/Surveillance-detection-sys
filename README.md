@@ -2,6 +2,8 @@
 
 FastAPI MVP for RTSP or local-video capture, YOLO person/vehicle detection, polygon zones, and event storage.
 
+Use a stable Python 3.11 release for PyTorch. The detector contains a small compatibility fallback for older 3.11 release-candidate environments, but recreating `.venv` with stable Python is preferred.
+
 ```bash
 cp config.example.yaml config.yaml
 pip install -r requirements.txt

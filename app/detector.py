@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any
+import sys
 
 SUPPORTED_CLASSES = {
     0: "person",
@@ -29,6 +30,12 @@ class Detector:
         if not 0 <= confidence <= 1:
             raise ValueError("confidence must be between 0 and 1")
         try:
+            # Some Python 3.11 release-candidate builds lack APIs expected by
+            # current PyTorch. Stable Python 3.11 remains the recommended fix.
+            if not hasattr(sys, "get_int_max_str_digits"):
+                sys.get_int_max_str_digits = lambda: 4300
+            if not hasattr(sys, "set_int_max_str_digits"):
+                sys.set_int_max_str_digits = lambda _value: None
             from ultralytics import YOLO
         except ImportError as exc:
             raise RuntimeError("Ultralytics is required for detection; install it with `pip install ultralytics`") from exc
