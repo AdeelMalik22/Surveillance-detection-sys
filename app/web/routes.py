@@ -38,12 +38,17 @@ def _annotated_frames(path: Path):
     capture = cv2.VideoCapture(str(path))
     detector = Detector()
     tracker = IoUTracker()
+    frame_number = 0
+    tracked_detections = []
     try:
         while True:
             ok, frame = capture.read()
             if not ok:
                 break
-            for detection in tracker.update(detector.detect(frame)):
+            if frame_number % 3 == 0:
+                tracked_detections = tracker.update(detector.detect(frame))
+            frame_number += 1
+            for detection in tracked_detections:
                 x1, y1, x2, y2 = map(int, detection.bbox)
                 cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
                 label = f"{detection.object_class} #{detection.track_id} {detection.confidence:.2f}"
