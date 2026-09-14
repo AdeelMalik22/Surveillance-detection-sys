@@ -36,7 +36,7 @@ async def upload_video(file: UploadFile = File(...)):
     return {"session_id": session_id, "filename": file.filename, "stream_url": f"/api/stream/{session_id}"}
 
 
-def _annotated_frames(path: Path):
+def _annotated_frames(session_id: str, path: Path):
     capture = cv2.VideoCapture(str(path))
     detector = Detector(confidence=0.3, image_size=960)
     tracker = IoUTracker()
@@ -71,7 +71,7 @@ def stream(session_id: str):
     matches = list(UPLOADS.glob(f"{session_id}.*"))
     if not matches:
         raise HTTPException(404, "upload session not found")
-    return StreamingResponse(_annotated_frames(matches[0]), media_type="multipart/x-mixed-replace; boundary=frame")
+    return StreamingResponse(_annotated_frames(session_id, matches[0]), media_type="multipart/x-mixed-replace; boundary=frame")
 
 
 @router.get("/api/counts/{session_id}")
