@@ -15,6 +15,7 @@ from ..tracking import IoUTracker
 router = APIRouter()
 UPLOADS = Path(tempfile.gettempdir()) / "surveillance-mvp-uploads"
 UPLOADS.mkdir(parents=True, exist_ok=True)
+SESSION_COUNTS: dict[str, dict[str, int]] = {}
 
 
 @router.get("/ui", include_in_schema=False)
@@ -31,6 +32,7 @@ async def upload_video(file: UploadFile = File(...)):
     destination = UPLOADS / f"{session_id}{suffix}"
     with destination.open("wb") as output:
         shutil.copyfileobj(file.file, output)
+    SESSION_COUNTS[session_id] = {"person": 0, "car": 0, "motorcycle": 0, "bus": 0, "truck": 0, "total": 0}
     return {"session_id": session_id, "filename": file.filename, "stream_url": f"/api/stream/{session_id}"}
 
 
@@ -48,11 +50,15 @@ def _annotated_frames(path: Path):
             if frame_number % 3 == 0:
                 tracked_detections = tracker.update(detector.detect(frame))
             frame_number += 1
+            counts = {"person": 0, "car": 0, "motorcycle": 0, "bus": 0, "truck": 0}
             for detection in tracked_detections:
+                if detection.object_class in counts:
+                    counts[detection.object_class] += 1
                 x1, y1, x2, y2 = map(int, detection.bbox)
                 cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
                 label = f"{detection.object_class} #{detection.track_id} {detection.confidence:.2f}"
                 cv2.putText(frame, label, (x1, max(20, y1 - 8)), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 255, 0), 2)
+            SESSION_COUNTS[session_id] = {**counts, "total": sum(counts.values())}
             ok, encoded = cv2.imencode(".jpg", frame)
             if ok:
                 yield b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + encoded.tobytes() + b"\r\n"
@@ -66,3 +72,10 @@ def stream(session_id: str):
     if not matches:
         raise HTTPException(404, "upload session not found")
     return StreamingResponse(_annotated_frames(matches[0]), media_type="multipart/x-mixed-replace; boundary=frame")
+
+
+@router.get("/api/counts/{session_id}")
+def counts(session_id: str):
+    if session_id not in SESSION_COUNTS:
+        raise HTTPException(404, "upload session not found")
+    return SESSION_COUNTS[session_id]
