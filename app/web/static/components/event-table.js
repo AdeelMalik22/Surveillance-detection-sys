@@ -7,7 +7,15 @@ function eventCamera(value) {
   return String(value || 'camera').slice(0, 12);
 }
 
-export function renderEvents(root, events = [], page = 0, pageSize = 10, onPage = () => {}) {
+function eventClipStatus(event) {
+  if (!event.clip_url) return 'No clip';
+  if (event.clip_status === 'ready' && Number(event.clip_frame_count || 0) > 0) return 'Clip ready';
+  if (event.clip_status === 'ready') return 'Legacy clip';
+  if (event.clip_status === 'failed') return 'Clip failed';
+  return 'Recording';
+}
+
+export function renderEvents(root, events = [], page = 0, pageSize = 10, onPage = () => {}, onSelect = () => {}) {
   if (!events.length) {
     root.innerHTML = '<div class="empty-panel"><b>No events yet</b><small>Detection activity will appear here.</small></div>';
     return;
@@ -26,14 +34,16 @@ export function renderEvents(root, events = [], page = 0, pageSize = 10, onPage 
         <span>Camera</span>
         <span>Zone</span>
         <span>Timestamp</span>
+        <span>Clip</span>
       </div>
-      ${visibleEvents.map((event) => `
-        <div class="event-row">
+      ${visibleEvents.map((event, index) => `
+        <button class="event-row event-button" type="button" data-event-index="${index}">
           <b>${event.object_class || 'object'}</b>
           <span>${eventCamera(event.camera_id)}</span>
           <span>${event.zone_id || 'unassigned'}</span>
           <time>${eventTime(event.timestamp)}</time>
-        </div>
+          <span>${eventClipStatus(event)}</span>
+        </button>
       `).join('')}
     </div>
     <div class="pagination">
@@ -48,4 +58,7 @@ export function renderEvents(root, events = [], page = 0, pageSize = 10, onPage 
 
   root.querySelector('[data-page="prev"]')?.addEventListener('click', () => onPage(currentPage - 1));
   root.querySelector('[data-page="next"]')?.addEventListener('click', () => onPage(currentPage + 1));
+  root.querySelectorAll('[data-event-index]').forEach((button) => {
+    button.addEventListener('click', () => onSelect(visibleEvents[Number(button.dataset.eventIndex)]));
+  });
 }

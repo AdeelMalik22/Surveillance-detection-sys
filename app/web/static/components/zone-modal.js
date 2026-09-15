@@ -164,7 +164,11 @@ export function openZoneModal(feed) {
       }),
     });
 
-    if (response.ok) root.innerHTML = '';
+    if (response.ok) {
+      const savedZone = await response.json();
+      feed.zones = [...(feed.zones || []).filter((zone) => zone.id !== savedZone.id), savedZone];
+      root.innerHTML = '';
+    }
     else alert('Unable to save zone');
   });
 
