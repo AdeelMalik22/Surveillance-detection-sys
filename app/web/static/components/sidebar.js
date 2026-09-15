@@ -1,0 +1,1 @@
+export function renderSidebar(root){root.innerHTML='<div class="side-brand"><b>SV</b><strong>Sentinel Vision<small>AI surveillance</small></strong></div><nav><a class="active">▦ Dashboard</a><a>◉ Cameras</a><a>◫ Events</a><a>⌖ Zones</a></nav><small class="side-note">Local workspace · v0.1.0</small>'}

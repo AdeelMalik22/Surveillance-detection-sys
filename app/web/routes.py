@@ -22,10 +22,11 @@ def ui():
     return FileResponse(Path(__file__).parent / "static" / "index.html")
 
 
-@router.get("/ui/static/{asset}", include_in_schema=False)
-def ui_asset(asset: str):
-    file = Path(__file__).parent / "static" / asset
-    if not file.is_file():
+@router.get("/ui/static/{asset_path:path}", include_in_schema=False)
+def ui_asset(asset_path: str):
+    root = (Path(__file__).parent / "static").resolve()
+    file = (root / asset_path).resolve()
+    if root not in file.parents or not file.is_file():
         raise HTTPException(404, "UI asset not found")
     return FileResponse(file)
 
