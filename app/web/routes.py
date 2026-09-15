@@ -71,6 +71,19 @@ def stream(session_id: str):
     )
 
 
+@router.post("/api/stream/{session_id}/stop")
+def stop_stream(session_id: str):
+    if not surveillance.get_camera(session_id):
+        raise HTTPException(404, "upload session not found")
+
+    stopped = surveillance.stop_stream(session_id)
+    return {
+        "session_id": session_id,
+        "stopped": stopped,
+        "message": "stream stopping; active events will be finalized",
+    }
+
+
 @router.get("/api/counts/{session_id}")
 def counts(session_id: str):
     if (

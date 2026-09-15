@@ -7,6 +7,7 @@ import tempfile
 import uuid
 from collections import deque
 from pathlib import Path
+from threading import Event
 
 import cv2
 from shapely.geometry import Point, Polygon
@@ -20,6 +21,7 @@ UPLOADS.mkdir(parents=True, exist_ok=True)
 CLIPS.mkdir(parents=True, exist_ok=True)
 SESSION_COUNTS: dict[str, dict[str, int]] = {}
 SESSION_ZONES: dict[str, dict[str, list[list[float]]]] = {}
+STOP_REQUESTS: dict[str, Event] = {}
 DEMO_EVENTS = EventStore()
 CAMERAS = CameraStore(DEMO_EVENTS.db)
 CLIP_FPS = 8
@@ -46,6 +48,7 @@ def upload_session(filename: str, source) -> dict:
 
 
 def delete_session(session_id: str):
+    stop_stream(session_id)
     path = CAMERAS.delete_camera(session_id)
     if path is None:
         return None
@@ -79,6 +82,14 @@ def list_cameras():
 
 def get_camera(session_id):
     return CAMERAS.get_camera(session_id)
+
+
+def stop_stream(session_id: str) -> bool:
+    stop_request = STOP_REQUESTS.get(session_id)
+    if stop_request is None:
+        return False
+    stop_request.set()
+    return True
 
 
 def _draw_zones(frame, session_id):
@@ -164,12 +175,20 @@ def stream_frames(session_id, path):
     if not video_fps or video_fps <= 0:
         video_fps = float(CLIP_FPS)
     video_fps = round(video_fps, 2)
-    detector = Detector(model_path="yolov8s.pt", confidence=0.3, image_size=960,
-                        tracker=str(Path(__file__).parents[1] / "bytetrack.yaml"))
+    detector = Detector(
+        model_path="yolov8n.pt",
+        confidence=0.3,
+        image_size=640,
+        tracker=str(Path(__file__).parents[1] / "bytetrack.yaml"),
+    )
+    stop_request = Event()
+    STOP_REQUESTS[session_id] = stop_request
     number, detections = 0, []
     buffer, active = deque(maxlen=max(1, round(CLIP_PRE_SECONDS * video_fps))), {}
     try:
         while True:
+            if stop_request.is_set():
+                break
             ok, frame = capture.read()
             if not ok: break
             if number % 3 == 0: detections = detector.track(frame)
@@ -209,6 +228,7 @@ def stream_frames(session_id, path):
             if ok: yield b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + encoded.tobytes() + b"\r\n"
     finally:
         for incident in active.values(): _finalize_incident(incident, number)
+        STOP_REQUESTS.pop(session_id, None)
         capture.release()
 
 
