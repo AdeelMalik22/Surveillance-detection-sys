@@ -21,7 +21,7 @@ parser.add_argument("--output", default="annotated.jpg")
 args = parser.parse_args()
 
 worker = CaptureWorker("detection-test", args.source, target_fps=8)
-detector = Detector(args.model, args.confidence, image_size=args.image_size)
+detector = Detector(args.model, args.confidence, image_size=args.image_size, tracker=str(Path(__file__).resolve().parents[1] / "app" / "bytetrack.yaml"))
 pipeline = ProcessingPipeline(worker, detector, target_fps=8)
 worker.start()
 pipeline.start()

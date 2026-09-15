@@ -27,7 +27,7 @@ class DetectionResult:
 
 
 class Detector:
-    def __init__(self, model_path: str = "yolov8n.pt", confidence: float = 0.3, device: str = "auto", image_size: int = 960):
+    def __init__(self, model_path: str = "yolov8n.pt", confidence: float = 0.4, device: str = "auto", image_size: int = 960, tracker: str = "bytetrack.yaml"):
         if not 0 <= confidence <= 1:
             raise ValueError("confidence must be between 0 and 1")
         if image_size < 320:
@@ -50,6 +50,7 @@ class Detector:
         self.model_path = model_path
         self.confidence = confidence
         self.image_size = image_size
+        self.tracker = tracker
         self.device = None if device == "auto" else device
         self.model = YOLO(model_path)
 
@@ -82,7 +83,7 @@ class Detector:
             classes=list(SUPPORTED_CLASSES),
             device=self.device,
             imgsz=self.image_size,
-            tracker="bytetrack.yaml",
+            tracker=self.tracker,
             persist=True,
             verbose=False,
         )

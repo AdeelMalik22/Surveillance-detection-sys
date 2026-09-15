@@ -39,7 +39,7 @@ async def upload_video(file: UploadFile = File(...)):
 
 def _annotated_frames(session_id: str, path: Path):
     capture = cv2.VideoCapture(str(path))
-    detector = Detector(confidence=0.3, image_size=960)
+    detector = Detector(confidence=0.4, image_size=960, tracker=str(Path(__file__).parents[1] / "bytetrack.yaml"))
     frame_number = 0
     tracked_detections = []
     counts = SESSION_COUNTS[session_id].copy()
