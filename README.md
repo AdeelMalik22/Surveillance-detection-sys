@@ -12,6 +12,6 @@ uvicorn main:app --reload
 
 Open `http://127.0.0.1:8000/docs`. A local `.mp4` path can be used as a camera URL. Test capture with `python scripts/test_capture.py --source sample.mp4 --seconds 20`, or detection with `python scripts/test_detection.py --source sample.mp4 --seconds 20 --output annotated.jpg`. Detection is currently a standalone pipeline; tracking and zone-event integration follow next. Do not log RTSP credentials or persist raw video by default, and follow applicable surveillance and privacy laws.
 
-Live tracking uses Ultralytics ByteTrack for more stable IDs in crowded scenes. ByteTrack improves identity continuity but is more CPU-intensive than the previous lightweight IoU tracker.
+Live tracking uses Ultralytics ByteTrack for more stable IDs in crowded scenes. The live detector uses YOLOv8s with a `0.3` confidence threshold and `960px` inference size to improve small-person recall. This is more accurate than YOLOv8n but more CPU-intensive.
 
 Visit `http://127.0.0.1:8000/ui` to upload a video. The browser displays the backend's MJPEG stream with green boxes, class names, confidence, and temporary track IDs. This UI uploads video rather than images because real-time playback and tracking require a frame sequence.
