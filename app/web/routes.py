@@ -22,6 +22,14 @@ def ui():
     return FileResponse(Path(__file__).parent / "static" / "index.html")
 
 
+@router.get("/ui/static/{asset}", include_in_schema=False)
+def ui_asset(asset: str):
+    file = Path(__file__).parent / "static" / asset
+    if not file.is_file():
+        raise HTTPException(404, "UI asset not found")
+    return FileResponse(file)
+
+
 @router.post("/api/uploads")
 async def upload_video(file: UploadFile = File(...)):
     suffix = Path(file.filename or "video.mp4").suffix.lower()
