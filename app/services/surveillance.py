@@ -153,7 +153,7 @@ def _update_incident(incident, occupancy, number):
 
 def _finalize_incident(incident, number):
     DEMO_EVENTS.update_metadata(incident["event_id"], status="closed", end_frame=number,
-        duration_seconds=round(max(0, (number - incident["start_frame"]) / incident["video_fps"), 2),
+        duration_seconds=round(max(0, (number - incident["start_frame"]) / incident["video_fps"]), 2),
         object_classes=sorted(incident["classes"]), track_ids=sorted(incident["track_ids"]),
         max_occupancy=incident["max_occupancy"], clip_status="ready", clip_frame_count=incident["index"])
 
