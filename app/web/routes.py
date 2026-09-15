@@ -104,7 +104,13 @@ def event_clip_meta(event_id: int):
     frames = sorted(clip.glob("frame-*.jpg")) if clip.is_dir() else []
     if not frames:
         raise HTTPException(404, "event clip is still recording or unavailable")
-    return JSONResponse({"event_id": event_id, "fps": surveillance.CLIP_FPS, "frame_count": len(frames)})
+    return JSONResponse(
+        {
+            "event_id": event_id,
+            "fps": surveillance.event_clip_fps(event_id),
+            "frame_count": len(frames),
+        }
+    )
 
 
 @router.get("/api/events/{event_id}/clip/frames/{frame_index}")

@@ -120,7 +120,7 @@ def _summary(classes):
     return "person + vehicle" if person and vehicle else "vehicle" if vehicle else "person" if person else "object"
 
 
-def _start_incident(session_id, zone_id, occupancy, buffered, frame, source, number):
+def _start_incident(session_id, zone_id, occupancy, buffered, frame, source, number, video_fps):
     detections = occupancy["detections"]
     best = max(detections, key=lambda item: item.confidence)
     event = DEMO_EVENTS.add(session_id, zone_id, _summary(occupancy["classes"]), best.confidence, best.bbox, {
@@ -128,14 +128,15 @@ def _start_incident(session_id, zone_id, occupancy, buffered, frame, source, num
         "start_frame": number, "end_frame": None, "duration_seconds": None, "source_video": source.name,
         "object_classes": sorted(occupancy["classes"]), "track_ids": sorted(occupancy["track_ids"]),
         "max_occupancy": len(detections), "clip_status": "recording", "clip_type": "image_sequence",
-        "clip_fps": CLIP_FPS, "clip_frame_count": 0, "clip_url": "/api/events/{event_id}/clip",
+        "clip_fps": video_fps, "clip_frame_count": 0, "clip_url": "/api/events/{event_id}/clip",
     })
     DEMO_EVENTS.update_metadata(event["id"], clip_url=f"/api/events/{event['id']}/clip")
     clip_path = CLIPS / f"event-{event['id']}"
     if clip_path.exists(): shutil.rmtree(clip_path)
     clip_path.mkdir(parents=True)
     incident = {"event_id": event["id"], "path": clip_path, "index": 0, "start_frame": number,
-                "last_occupied_frame": number, "clear_frames": ZONE_CLEAR_SECONDS * CLIP_FPS,
+                "last_occupied_frame": number, "clear_frames": ZONE_CLEAR_SECONDS * video_fps,
+                "video_fps": video_fps,
                 "classes": set(occupancy["classes"]), "track_ids": set(occupancy["track_ids"]),
                 "max_occupancy": len(detections)}
     for item in buffered: _append_clip_frame(incident, item)
@@ -152,17 +153,21 @@ def _update_incident(incident, occupancy, number):
 
 def _finalize_incident(incident, number):
     DEMO_EVENTS.update_metadata(incident["event_id"], status="closed", end_frame=number,
-        duration_seconds=round(max(0, (number - incident["start_frame"]) / CLIP_FPS), 2),
+        duration_seconds=round(max(0, (number - incident["start_frame"]) / incident["video_fps"), 2),
         object_classes=sorted(incident["classes"]), track_ids=sorted(incident["track_ids"]),
         max_occupancy=incident["max_occupancy"], clip_status="ready", clip_frame_count=incident["index"])
 
 
 def stream_frames(session_id, path):
     capture = cv2.VideoCapture(str(path))
+    video_fps = capture.get(cv2.CAP_PROP_FPS)
+    if not video_fps or video_fps <= 0:
+        video_fps = float(CLIP_FPS)
+    video_fps = round(video_fps, 2)
     detector = Detector(model_path="yolov8s.pt", confidence=0.3, image_size=960,
                         tracker=str(Path(__file__).parents[1] / "bytetrack.yaml"))
     number, detections = 0, []
-    buffer, active = deque(maxlen=CLIP_PRE_SECONDS * CLIP_FPS), {}
+    buffer, active = deque(maxlen=max(1, round(CLIP_PRE_SECONDS * video_fps))), {}
     try:
         while True:
             ok, frame = capture.read()
@@ -187,7 +192,16 @@ def stream_frames(session_id, path):
                     _finalize_incident(incident, number); del active[zone_id]
             for zone_id, current in occupancy.items():
                 if current["detections"] and zone_id not in active:
-                    active[zone_id] = _start_incident(session_id, zone_id, current, list(buffer), frame, path, number)
+                    active[zone_id] = _start_incident(
+                        session_id,
+                        zone_id,
+                        current,
+                        list(buffer),
+                        frame,
+                        path,
+                        number,
+                        video_fps,
+                    )
             buffer.append(frame.copy())
             counts["total"] = sum(counts[k] for k in ("person", "car", "motorcycle", "bus", "truck"))
             SESSION_COUNTS[session_id] = counts
@@ -205,3 +219,17 @@ def truncate_events():
     for path in CLIPS.glob("event-*"):
         if path.is_dir(): shutil.rmtree(path)
     return deleted
+
+
+def event_clip_fps(event_id: int) -> float:
+    row = DEMO_EVENTS.db.execute(
+        "SELECT metadata FROM events WHERE id = ?",
+        (event_id,),
+    ).fetchone()
+    if not row:
+        return float(CLIP_FPS)
+
+    import json
+
+    metadata = json.loads(row["metadata"] or "{}")
+    return float(metadata.get("clip_fps", CLIP_FPS))
