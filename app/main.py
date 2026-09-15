@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from .capture import CaptureWorker
 from .config import Settings, ZoneConfig, load_settings
 from .events import EventStore
-from .web.routes import router as web_router
+from .web.routes import register_session_zone, router as web_router, unregister_session_zone
 
 settings: Settings = load_settings(); store = EventStore(settings.database); workers = {}
 zones = {camera.id: {zone.id: zone for zone in camera.zones} for camera in settings.cameras}
@@ -53,9 +53,12 @@ def get_zones(): return {camera_id: list(camera_zones.values()) for camera_id, c
 def add_zone(request: ZoneRequest):
     if request.camera_id not in zones: zones[request.camera_id] = {}
     if request.zone.id in zones[request.camera_id]: raise HTTPException(409, "zone already exists")
-    zones[request.camera_id][request.zone.id] = request.zone; return request.zone
+    zones[request.camera_id][request.zone.id] = request.zone
+    register_session_zone(request.camera_id, request.zone.id, request.zone.polygon)
+    return request.zone
 
 @app.delete("/zones/{camera_id}/{zone_id}", status_code=204)
 def delete_zone(camera_id: str, zone_id: str):
     if zone_id not in zones.get(camera_id, {}): raise HTTPException(404, "zone not found")
     del zones[camera_id][zone_id]
+    unregister_session_zone(camera_id, zone_id)

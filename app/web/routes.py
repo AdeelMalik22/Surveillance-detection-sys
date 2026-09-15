@@ -10,11 +10,16 @@ from fastapi import APIRouter, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
 
 from ..detector import Detector
+from ..events import EventStore
+from ..zones import ZoneEngine
 
 router = APIRouter()
 UPLOADS = Path(tempfile.gettempdir()) / "surveillance-mvp-uploads"
 UPLOADS.mkdir(parents=True, exist_ok=True)
 SESSION_COUNTS: dict[str, dict[str, int]] = {}
+SESSION_ZONES: dict[str, dict[str, list[list[float]]]] = {}
+DEMO_EVENTS = EventStore()
+ZONE_COLOR = (116, 223, 187)
 
 
 @router.get("/ui", include_in_schema=False)
@@ -41,7 +46,29 @@ async def upload_video(file: UploadFile = File(...)):
     with destination.open("wb") as output:
         shutil.copyfileobj(file.file, output)
     SESSION_COUNTS[session_id] = {"person": 0, "car": 0, "motorcycle": 0, "bus": 0, "truck": 0, "total": 0}
+    SESSION_ZONES[session_id] = {}
     return {"session_id": session_id, "filename": file.filename, "stream_url": f"/api/stream/{session_id}"}
+
+
+def register_session_zone(session_id: str, zone_id: str, polygon: list[list[float]]) -> None:
+    if session_id in SESSION_COUNTS:
+        SESSION_ZONES.setdefault(session_id, {})[zone_id] = polygon
+
+
+def unregister_session_zone(session_id: str, zone_id: str) -> None:
+    if session_id in SESSION_ZONES:
+        SESSION_ZONES[session_id].pop(zone_id, None)
+
+
+def _draw_zones(frame, session_id: str) -> None:
+    for zone_id, polygon in SESSION_ZONES.get(session_id, {}).items():
+        if len(polygon) < 3:
+            continue
+        points = [(int(x), int(y)) for x, y in polygon]
+        for start, end in zip(points, points[1:] + points[:1]):
+            cv2.line(frame, start, end, ZONE_COLOR, 2)
+        x, y = points[0]
+        cv2.putText(frame, zone_id, (x, max(20, y - 8)), cv2.FONT_HERSHEY_SIMPLEX, 0.55, ZONE_COLOR, 2)
 
 
 def _annotated_frames(session_id: str, path: Path):
@@ -49,6 +76,8 @@ def _annotated_frames(session_id: str, path: Path):
     detector = Detector(model_path="yolov8s.pt", confidence=0.3, image_size=960, tracker=str(Path(__file__).parents[1] / "bytetrack.yaml"))
     frame_number = 0
     tracked_detections = []
+    zone_signature = None
+    zone_engine = ZoneEngine({})
     try:
         while True:
             ok, frame = capture.read()
@@ -57,6 +86,11 @@ def _annotated_frames(session_id: str, path: Path):
             if frame_number % 3 == 0:
                 tracked_detections = detector.track(frame)
             frame_number += 1
+            current_zones = SESSION_ZONES.get(session_id, {})
+            current_signature = tuple((zone_id, tuple(tuple(point) for point in polygon)) for zone_id, polygon in sorted(current_zones.items()))
+            if current_signature != zone_signature:
+                zone_engine = ZoneEngine(current_zones)
+                zone_signature = current_signature
             counts = {"person": 0, "car": 0, "motorcycle": 0, "bus": 0, "truck": 0}
             for detection in tracked_detections:
                 if detection.object_class in counts:
@@ -67,6 +101,9 @@ def _annotated_frames(session_id: str, path: Path):
                 cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
                 label = f"{detection.object_class} #{track_id} {detection.confidence:.2f}"
                 cv2.putText(frame, label, (x1, max(20, y1 - 8)), cv2.FONT_HERSHEY_SIMPLEX, 0.55, color, 2)
+            for detection, zone_id in zone_engine.entries([d for d in tracked_detections if d.track_id is not None]):
+                DEMO_EVENTS.add(session_id, zone_id, detection.object_class, detection.confidence, detection.bbox)
+            _draw_zones(frame, session_id)
             counts["total"] = sum(counts[key] for key in ("person", "car", "motorcycle", "bus", "truck"))
             SESSION_COUNTS[session_id] = counts.copy()
             ok, encoded = cv2.imencode(".jpg", frame)
