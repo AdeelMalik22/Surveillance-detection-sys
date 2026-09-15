@@ -28,7 +28,10 @@ ZONE_COLOR = (116, 223, 187)
 CLIP_FPS = 8
 CLIP_PRE_SECONDS = 2
 CLIP_POST_SECONDS = 4
-ZONE_CLEAR_SECONDS = 2
+# A detector can miss an object for a few sampled frames while it is moving.
+# Keep the zone incident open during that short gap so a group is represented
+# by one continuous event instead of many start/stop events.
+ZONE_CLEAR_SECONDS = 5
 VEHICLE_CLASSES = {"car", "motorcycle", "bus", "truck"}
 
 
@@ -58,6 +61,24 @@ async def upload_video(file: UploadFile = File(...)):
     SESSION_COUNTS[session_id] = {"person": 0, "car": 0, "motorcycle": 0, "bus": 0, "truck": 0, "total": 0}
     SESSION_ZONES[session_id] = {}
     return CAMERAS.add_camera(session_id, file.filename, str(destination), f"/api/stream/{session_id}")
+
+
+@router.delete("/api/events", status_code=200)
+def truncate_events():
+    """Delete all event records and their generated clip frames.
+
+    Camera uploads and configured zones are intentionally left untouched.
+    """
+    row = DEMO_EVENTS.db.execute("SELECT COUNT(*) AS count FROM events").fetchone()
+    deleted = int(row["count"])
+    DEMO_EVENTS.db.execute("DELETE FROM events")
+    DEMO_EVENTS.db.commit()
+
+    for clip_path in CLIPS.glob("event-*"):
+        if clip_path.is_dir():
+            shutil.rmtree(clip_path)
+
+    return {"deleted": deleted}
 
 
 @router.get("/api/cameras")
@@ -160,6 +181,8 @@ def _start_zone_incident(session_id: str, zone_id: str, occupancy: dict, buffere
         best_detection.bbox,
         {
             "event_type": "zone_occupancy",
+            "grouping": "continuous_zone_occupancy",
+            "clear_tolerance_seconds": ZONE_CLEAR_SECONDS,
             "status": "open",
             "start_frame": frame_number,
             "end_frame": None,
@@ -208,6 +231,18 @@ def _update_zone_incident(incident: dict, occupancy: dict, frame_number: int) ->
     incident["max_occupancy"] = max(incident["max_occupancy"], len(detections))
     if detections:
         incident["best_confidence"] = max(incident["best_confidence"], max(item.confidence for item in detections))
+
+
+def _zone_incident_is_clear(incident: dict, occupancy: dict, frame_number: int) -> bool:
+    """Return whether a zone has been empty long enough to end its event.
+
+    The incident is deliberately keyed by zone, rather than by track ID. This
+    means people can enter/leave the group and a passing vehicle can be
+    included without creating a new event while the zone remains occupied.
+    """
+    if occupancy["detections"]:
+        return False
+    return frame_number - incident["last_occupied_frame"] >= incident["clear_frames"]
 
 
 def _finalize_zone_incident(incident: dict, frame_number: int) -> None:
@@ -259,8 +294,7 @@ def _annotated_frames(session_id: str, path: Path):
                 if occupancy["detections"]:
                     _update_zone_incident(incident, occupancy, frame_number)
                 else:
-                    incident["clear_frames"] -= 1
-                    if incident["clear_frames"] <= 0:
+                    if _zone_incident_is_clear(incident, occupancy, frame_number):
                         _finalize_zone_incident(incident, frame_number)
                         del active_incidents[zone_id]
             for zone_id, occupancy in occupancy_by_zone.items():
