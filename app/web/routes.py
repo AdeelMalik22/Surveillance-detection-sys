@@ -15,7 +15,6 @@ router = APIRouter()
 UPLOADS = Path(tempfile.gettempdir()) / "surveillance-mvp-uploads"
 UPLOADS.mkdir(parents=True, exist_ok=True)
 SESSION_COUNTS: dict[str, dict[str, int]] = {}
-SESSION_SEEN_TRACKS: dict[str, set[int]] = {}
 
 
 @router.get("/ui", include_in_schema=False)
@@ -33,7 +32,6 @@ async def upload_video(file: UploadFile = File(...)):
     with destination.open("wb") as output:
         shutil.copyfileobj(file.file, output)
     SESSION_COUNTS[session_id] = {"person": 0, "car": 0, "motorcycle": 0, "bus": 0, "truck": 0, "total": 0}
-    SESSION_SEEN_TRACKS[session_id] = set()
     return {"session_id": session_id, "filename": file.filename, "stream_url": f"/api/stream/{session_id}"}
 
 
@@ -42,8 +40,6 @@ def _annotated_frames(session_id: str, path: Path):
     detector = Detector(confidence=0.4, image_size=960, tracker=str(Path(__file__).parents[1] / "bytetrack.yaml"))
     frame_number = 0
     tracked_detections = []
-    counts = SESSION_COUNTS[session_id].copy()
-    seen_tracks = SESSION_SEEN_TRACKS[session_id]
     try:
         while True:
             ok, frame = capture.read()
@@ -52,12 +48,11 @@ def _annotated_frames(session_id: str, path: Path):
             if frame_number % 3 == 0:
                 tracked_detections = detector.track(frame)
             frame_number += 1
+            counts = {"person": 0, "car": 0, "motorcycle": 0, "bus": 0, "truck": 0}
             for detection in tracked_detections:
-                track_id = detection.track_id if detection.track_id is not None else id(detection)
-                if track_id not in seen_tracks:
-                    seen_tracks.add(track_id)
-                    if detection.object_class in counts:
-                        counts[detection.object_class] += 1
+                if detection.object_class in counts:
+                    counts[detection.object_class] += 1
+                track_id = detection.track_id if detection.track_id is not None else "?"
                 x1, y1, x2, y2 = map(int, detection.bbox)
                 color = (0, 0, 255) if detection.object_class in {"car", "truck"} else (0, 255, 0)
                 cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
@@ -92,5 +87,4 @@ def reset_counts(session_id: str):
     if session_id not in SESSION_COUNTS:
         raise HTTPException(404, "upload session not found")
     SESSION_COUNTS[session_id] = {"person": 0, "car": 0, "motorcycle": 0, "bus": 0, "truck": 0, "total": 0}
-    SESSION_SEEN_TRACKS[session_id] = set()
     return SESSION_COUNTS[session_id]
