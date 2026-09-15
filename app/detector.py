@@ -23,6 +23,7 @@ class DetectionResult:
     class_id: int
     confidence: float
     bbox: list[float]
+    track_id: int | None = None
 
 
 class Detector:
@@ -72,3 +73,27 @@ class Detector:
                 continue
             detections.append(DetectionResult(SUPPORTED_CLASSES[class_id], class_id, float(confidence), [float(value) for value in box]))
         return detections
+
+    def track(self, frame: Any) -> list[DetectionResult]:
+        """Run YOLO with persistent Ultralytics ByteTrack identities."""
+        results = self.model.track(
+            source=frame,
+            conf=self.confidence,
+            classes=list(SUPPORTED_CLASSES),
+            device=self.device,
+            imgsz=self.image_size,
+            tracker="bytetrack.yaml",
+            persist=True,
+            verbose=False,
+        )
+        if not results:
+            return []
+        boxes = results[0].boxes
+        ids = boxes.id.tolist() if boxes.id is not None else [None] * len(boxes)
+        tracked: list[DetectionResult] = []
+        for box, class_id, confidence, track_id in zip(boxes.xyxy.tolist(), boxes.cls.tolist(), boxes.conf.tolist(), ids):
+            class_id = int(class_id)
+            if class_id not in SUPPORTED_CLASSES:
+                continue
+            tracked.append(DetectionResult(SUPPORTED_CLASSES[class_id], class_id, float(confidence), [float(value) for value in box], None if track_id is None else int(track_id)))
+        return tracked

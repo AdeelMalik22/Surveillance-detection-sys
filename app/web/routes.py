@@ -10,7 +10,6 @@ from fastapi import APIRouter, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
 
 from ..detector import Detector
-from ..tracking import IoUTracker
 
 router = APIRouter()
 UPLOADS = Path(tempfile.gettempdir()) / "surveillance-mvp-uploads"
@@ -41,7 +40,6 @@ async def upload_video(file: UploadFile = File(...)):
 def _annotated_frames(session_id: str, path: Path):
     capture = cv2.VideoCapture(str(path))
     detector = Detector(confidence=0.3, image_size=960)
-    tracker = IoUTracker()
     frame_number = 0
     tracked_detections = []
     counts = SESSION_COUNTS[session_id].copy()
@@ -52,17 +50,18 @@ def _annotated_frames(session_id: str, path: Path):
             if not ok:
                 break
             if frame_number % 3 == 0:
-                tracked_detections = tracker.update(detector.detect(frame))
+                tracked_detections = detector.track(frame)
             frame_number += 1
             for detection in tracked_detections:
-                if detection.track_id not in seen_tracks:
-                    seen_tracks.add(detection.track_id)
+                track_id = detection.track_id if detection.track_id is not None else id(detection)
+                if track_id not in seen_tracks:
+                    seen_tracks.add(track_id)
                     if detection.object_class in counts:
                         counts[detection.object_class] += 1
                 x1, y1, x2, y2 = map(int, detection.bbox)
                 color = (0, 0, 255) if detection.object_class in {"car", "truck"} else (0, 255, 0)
                 cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
-                label = f"{detection.object_class} #{detection.track_id} {detection.confidence:.2f}"
+                label = f"{detection.object_class} #{track_id} {detection.confidence:.2f}"
                 cv2.putText(frame, label, (x1, max(20, y1 - 8)), cv2.FONT_HERSHEY_SIMPLEX, 0.55, color, 2)
             counts["total"] = sum(counts[key] for key in ("person", "car", "motorcycle", "bus", "truck"))
             SESSION_COUNTS[session_id] = counts.copy()

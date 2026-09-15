@@ -9,13 +9,12 @@ import cv2
 
 from .capture import CaptureWorker
 from .detector import Detector
-from .tracking import IoUTracker
 
 
 class ProcessingPipeline:
     def __init__(self, capture: CaptureWorker, detector: Detector, target_fps: float = 8):
         self.capture, self.detector, self.interval = capture, detector, 1 / target_fps
-        self.tracker = IoUTracker(); self._annotated = None; self._lock = threading.Lock(); self._stop = threading.Event(); self._thread = None
+        self._annotated = None; self._lock = threading.Lock(); self._stop = threading.Event(); self._thread = None
         self.inference_fps = 0.0; self.last_error = None
 
     def start(self):
@@ -31,7 +30,7 @@ class ProcessingPipeline:
             frame = self.capture.latest()
             if frame is None: self._stop.wait(self.interval); continue
             try:
-                detections = self.tracker.update(self.detector.detect(frame)); annotated = frame.copy()
+                detections = self.detector.track(frame); annotated = frame.copy()
                 for detection in detections:
                     x1, y1, x2, y2 = map(int, detection.bbox); color = (0, 255, 0)
                     cv2.rectangle(annotated, (x1, y1), (x2, y2), color, 2)
