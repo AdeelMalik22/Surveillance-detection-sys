@@ -8,7 +8,7 @@ This repository is an AI surveillance MVP built with FastAPI, OpenCV, Ultralytic
 
 - `app/main.py`: FastAPI application, configured camera workers, snapshots, status, events, and configured-camera zones.
 - `app/api/`: HTTP route modules; keep endpoint handlers thin and organized by resource (`zone.py`, `event.py`, `camera.py`, `system.py`).
-- `app/processing/`: frame capture, YOLO detection, tracking, pipeline orchestration, shared zone occupancy, and incident lifecycle.
+- `app/processing/`: frame capture, YOLO/ByteTrack detection, pipeline orchestration, shared zone occupancy, and incident lifecycle. Tracking is provided by Ultralytics inside `detector.py`; do not add a second custom tracker.
 - `app/core/config.py`: application settings, YAML loading, and configuration models.
 - `app/infrastructure/events.py`: SQLite event and camera/zone persistence.
 - `app/events.py`: SQLite event persistence.
