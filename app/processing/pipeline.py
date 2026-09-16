@@ -25,22 +25,30 @@ class ProcessingPipeline:
         if self._thread: self._thread.join(timeout=2)
     def latest_annotated(self):
         with self._lock: return None if self._annotated is None else self._annotated.copy()
+
+    def process_frame(self, frame, frame_number):
+        """Process one frame; exposed for deterministic integration tests."""
+        detections = self.detector.track(frame)
+        if self.on_detections is not None:
+            self.on_detections(detections, frame, frame_number)
+        annotated = frame.copy()
+        for detection in detections:
+            x1, y1, x2, y2 = map(int, detection.bbox)
+            color = (0, 255, 0)
+            cv2.rectangle(annotated, (x1, y1), (x2, y2), color, 2)
+            label = f"{detection.object_class} #{detection.track_id} {detection.confidence:.2f}"
+            cv2.putText(annotated, label, (x1, max(20, y1 - 8)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
+        with self._lock:
+            self._annotated = annotated
+        return detections
     def _run(self):
         count, started = 0, time.monotonic()
         while not self._stop.is_set():
             frame = self.capture.latest()
             if frame is None: self._stop.wait(self.interval); continue
             try:
-                detections = self.detector.track(frame); annotated = frame.copy()
                 self.frame_number += 1
-                if self.on_detections is not None:
-                    self.on_detections(detections, frame, self.frame_number)
-                for detection in detections:
-                    x1, y1, x2, y2 = map(int, detection.bbox); color = (0, 255, 0)
-                    cv2.rectangle(annotated, (x1, y1), (x2, y2), color, 2)
-                    label = f"{detection.object_class} #{detection.track_id} {detection.confidence:.2f}"
-                    cv2.putText(annotated, label, (x1, max(20, y1 - 8)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
-                with self._lock: self._annotated = annotated
+                self.process_frame(frame, self.frame_number)
                 self.last_error = None; count += 1; elapsed = time.monotonic() - started; self.inference_fps = count / elapsed if elapsed else 0
             except Exception as error:
                 self.last_error = str(error)
