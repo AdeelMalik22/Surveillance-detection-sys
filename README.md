@@ -30,6 +30,8 @@ uvicorn main:app --reload
 
 Open `http://127.0.0.1:8000/docs` for API documentation or `http://127.0.0.1:8000/ui` for the dashboard. The root `main.py` starts the FastAPI application from `app.main`. A local `.mp4` path can be used as a camera URL in `config.yaml`.
 
+Open `http://127.0.0.1:8000/live` to view annotated live footage from configured RTSP cameras.
+
 ## Useful commands
 
 ```bash

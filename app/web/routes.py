@@ -11,6 +11,11 @@ def ui():
     return FileResponse(Path(__file__).parent / "static" / "index.html")
 
 
+@router.get("/live", include_in_schema=False)
+def live():
+    return FileResponse(Path(__file__).parent / "static" / "live.html")
+
+
 @router.get("/ui/static/{asset_path:path}", include_in_schema=False)
 def ui_asset(asset_path: str):
     root = (Path(__file__).parent / "static").resolve()

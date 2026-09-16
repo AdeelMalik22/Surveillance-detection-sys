@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Live RTSP Camera</title>
+  <style>
+    :root { color-scheme: dark; font-family: system-ui, sans-serif; }
+    body { max-width: 1100px; margin: 0 auto; padding: 28px; background: #10131a; color: #eef2f7; }
+    h1 { margin: 0 0 8px; }
+    p { color: #aeb8c7; }
+    select, button { padding: 10px 12px; border: 1px solid #3d4655; border-radius: 8px; background: #1c2330; color: inherit; }
+    .toolbar { display: flex; gap: 12px; align-items: center; margin: 22px 0; }
+    .status { color: #9fe3b1; }
+    .screen { min-height: 360px; display: grid; place-items: center; background: #080a0f; border: 1px solid #303948; border-radius: 12px; overflow: hidden; }
+    img { display: block; width: 100%; height: auto; }
+    .empty { color: #aeb8c7; padding: 50px; text-align: center; }
+  </style>
+</head>
+<body>
+  <h1>Live RTSP Camera</h1>
+  <p>This view displays the annotated frames produced by the configured-camera pipeline.</p>
+  <div class="toolbar">
+    <label for="camera">Camera:</label>
+    <select id="camera"></select>
+    <button id="refresh" type="button">Refresh</button>
+    <span id="status" class="status"></span>
+  </div>
+  <div class="screen">
+    <div id="empty" class="empty">Loading cameras...</div>
+    <img id="feed" alt="Live annotated camera feed" hidden>
+  </div>
+  <script>
+    const camera = document.querySelector('#camera');
+    const feed = document.querySelector('#feed');
+    const empty = document.querySelector('#empty');
+    const status = document.querySelector('#status');
+
+    async function load() {
+      const response = await fetch('/status');
+      const data = await response.json();
+      camera.replaceChildren();
+      data.cameras.forEach((item) => {
+        const option = document.createElement('option');
+        option.value = item.camera_id;
+        option.textContent = `${item.camera_id} (${item.connected ? 'connected' : 'disconnected'})`;
+        camera.appendChild(option);
+      });
+      if (!data.cameras.length) {
+        feed.hidden = true;
+        empty.hidden = false;
+        empty.textContent = 'No configured cameras. Add one to config.yaml and restart the server.';
+        status.textContent = '';
+        return;
+      }
+      start();
+    }
+
+    function start() {
+      const id = camera.value;
+      if (!id) return;
+      feed.src = `/cameras/${encodeURIComponent(id)}/stream?run=${Date.now()}`;
+      feed.hidden = false;
+      empty.hidden = true;
+      status.textContent = `Streaming ${id}`;
+    }
+
+    camera.addEventListener('change', start);
+    document.querySelector('#refresh').addEventListener('click', load);
+    load().catch(() => { empty.textContent = 'Unable to load camera status.'; });
+  </script>
+</body>
+</html>

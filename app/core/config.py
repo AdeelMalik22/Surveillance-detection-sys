@@ -42,7 +42,11 @@ def _expand(value):
     return value
 
 def load_settings(path="config.yaml"):
+    # Resolve the default project config from the repository root, rather than
+    # depending on the directory from which Uvicorn was launched.
     file = Path(path)
+    if path == "config.yaml" and not file.is_absolute():
+        file = Path(__file__).parents[2] / path
     if not file.exists(): return Settings()
     with file.open(encoding="utf-8") as handle: data = yaml.safe_load(handle) or {}
     return Settings.model_validate(_expand(data))
