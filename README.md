@@ -16,7 +16,7 @@ Connect the live camera path:
 CaptureWorker -> Detector.track() -> ZoneEngine -> EventStore -> annotated output
 ```
 
-The occupancy calculation is now shared in `app/zones.py`, and uploaded-video events use the continuous incident model: incidents open on occupancy, update while occupied, and close after five seconds of absence. The remaining integration work is to connect configured cameras to the same lifecycle, persist camera zones through the live API, and add end-to-end event tests. Production hardening should then address authentication, restricted CORS, resource cleanup, structured logging, model lifecycle management, and concurrent database access.
+The occupancy calculation is shared in `app/zones.py`, and the continuous open/update/close lifecycle is shared in `app/incidents.py`. Uploaded-video events use this manager and close after five seconds of absence. The remaining integration work is to connect configured cameras to the same lifecycle, persist camera zones through the live API, and add end-to-end event tests. Production hardening should then address authentication, restricted CORS, resource cleanup, structured logging, model lifecycle management, and concurrent database access.
 
 ## Setup
 

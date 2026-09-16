@@ -12,6 +12,7 @@ from threading import Event
 import cv2
 from ..detector import Detector
 from ..events import CameraStore, EventStore
+from ..incidents import IncidentManager
 from ..zones import VEHICLE_CLASSES, incident_summary, occupancy
 
 UPLOADS = Path(tempfile.gettempdir()) / "surveillance-mvp-uploads"
@@ -147,6 +148,10 @@ def _finalize_incident(incident, number):
         max_occupancy=incident["max_occupancy"], clip_status="ready", clip_frame_count=incident["index"])
 
 
+def _open_incident(session_id, zone_id, current, buffered, frame, source, number, video_fps):
+    return _start_incident(session_id, zone_id, current, buffered, frame, source, number, video_fps)
+
+
 def stream_frames(session_id, path):
     capture = cv2.VideoCapture(str(path))
     video_fps = capture.get(cv2.CAP_PROP_FPS)
@@ -162,7 +167,16 @@ def stream_frames(session_id, path):
     stop_request = Event()
     STOP_REQUESTS[session_id] = stop_request
     number, detections = 0, []
-    buffer, active = deque(maxlen=max(1, round(CLIP_PRE_SECONDS * video_fps))), {}
+    buffer = deque(maxlen=max(1, round(CLIP_PRE_SECONDS * video_fps)))
+    incidents = IncidentManager(
+        clear_frames=ZONE_CLEAR_SECONDS * video_fps,
+        on_open=lambda zone_id, current, frame_number: _open_incident(
+            session_id, zone_id, current, list(buffer), frame, path, frame_number, video_fps
+        ),
+        on_update=_update_incident,
+        on_close=_finalize_incident,
+        on_frame=_append_clip_frame,
+    )
     try:
         while True:
             if stop_request.is_set():
@@ -181,31 +195,14 @@ def stream_frames(session_id, path):
                 cv2.putText(frame, f"{detection.object_class} #{detection.track_id or '?'} {detection.confidence:.2f}", (x1, max(20, y1 - 8)), cv2.FONT_HERSHEY_SIMPLEX, .55, color, 2)
             _draw_zones(frame, session_id)
             occupancy_by_zone = occupancy(zones, detections)
-            for zone_id, incident in list(active.items()):
-                _append_clip_frame(incident, frame)
-                current = occupancy_by_zone.get(zone_id, {"detections": [], "classes": set(), "track_ids": set()})
-                if current["detections"]: _update_incident(incident, current, number)
-                elif number - incident["last_occupied_frame"] >= incident["clear_frames"]:
-                    _finalize_incident(incident, number); del active[zone_id]
-            for zone_id, current in occupancy_by_zone.items():
-                if current["detections"] and zone_id not in active:
-                    active[zone_id] = _start_incident(
-                        session_id,
-                        zone_id,
-                        current,
-                        list(buffer),
-                        frame,
-                        path,
-                        number,
-                        video_fps,
-                    )
+            incidents.process(occupancy_by_zone, frame, number)
             buffer.append(frame.copy())
             counts["total"] = sum(counts[k] for k in ("person", "car", "motorcycle", "bus", "truck"))
             SESSION_COUNTS[session_id] = counts
             ok, encoded = cv2.imencode(".jpg", frame)
             if ok: yield b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + encoded.tobytes() + b"\r\n"
     finally:
-        for incident in active.values(): _finalize_incident(incident, number)
+        incidents.close_all(number)
         STOP_REQUESTS.pop(session_id, None)
         capture.release()
 
