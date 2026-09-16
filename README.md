@@ -4,7 +4,7 @@ FastAPI-based surveillance MVP for local videos and RTSP sources. The project in
 
 ## Current status
 
-The uploaded-video workflow is the most complete path. It supports video upload and session management, YOLO detection for people and vehicles, ByteTrack tracking, polygon-zone occupancy detection, SQLite events, event frame sequences, and an MJPEG browser stream.
+The uploaded-video workflow is the most complete path. It supports video upload and session management, YOLO detection for people and vehicles, ByteTrack tracking, shared polygon-zone occupancy detection, continuous incidents, SQLite events, event frame sequences, and an MJPEG browser stream.
 
 The configured-camera API in `app/main.py` currently starts capture workers and exposes camera status and snapshots. Its capture path is not yet connected to the detector, zone engine, or event store. Zones created through that API are held in memory and are lost when the application restarts.
 
@@ -16,7 +16,7 @@ Connect the live camera path:
 CaptureWorker -> Detector.track() -> ZoneEngine -> EventStore -> annotated output
 ```
 
-This phase should also unify configured cameras and uploaded videos around the same processing and event lifecycle, persist camera zones, and add end-to-end event tests. Production hardening should then address authentication, restricted CORS, resource cleanup, structured logging, model lifecycle management, and concurrent database access.
+The occupancy calculation is now shared in `app/zones.py`, and uploaded-video events use the continuous incident model: incidents open on occupancy, update while occupied, and close after five seconds of absence. The remaining integration work is to connect configured cameras to the same lifecycle, persist camera zones through the live API, and add end-to-end event tests. Production hardening should then address authentication, restricted CORS, resource cleanup, structured logging, model lifecycle management, and concurrent database access.
 
 ## Setup
 

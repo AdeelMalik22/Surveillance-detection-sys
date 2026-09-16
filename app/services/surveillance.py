@@ -10,10 +10,9 @@ from pathlib import Path
 from threading import Event
 
 import cv2
-from shapely.geometry import Point, Polygon
-
 from ..detector import Detector
 from ..events import CameraStore, EventStore
+from ..zones import VEHICLE_CLASSES, incident_summary, occupancy
 
 UPLOADS = Path(tempfile.gettempdir()) / "surveillance-mvp-uploads"
 CLIPS = Path(tempfile.gettempdir()) / "surveillance-mvp-event-clips"
@@ -27,7 +26,6 @@ CAMERAS = CameraStore(DEMO_EVENTS.db)
 CLIP_FPS = 8
 CLIP_PRE_SECONDS = 2
 ZONE_CLEAR_SECONDS = 5
-VEHICLE_CLASSES = {"car", "motorcycle", "bus", "truck"}
 
 
 def initial_counts():
@@ -103,21 +101,6 @@ def _draw_zones(frame, session_id):
         cv2.putText(frame, zone_id, (x, max(20, y - 8)), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (116, 223, 187), 2)
 
 
-def _zone_occupancy(zones, detections):
-    occupancy = {z: {"detections": [], "classes": set(), "track_ids": set()} for z in zones}
-    polygons = {z: Polygon(points) for z, points in zones.items() if len(points) >= 3}
-    for detection in detections:
-        x1, _y1, x2, y2 = detection.bbox
-        point = Point((x1 + x2) / 2, y2)
-        for zone_id, polygon in polygons.items():
-            if polygon.covers(point):
-                occupancy[zone_id]["detections"].append(detection)
-                occupancy[zone_id]["classes"].add(detection.object_class)
-                if detection.track_id is not None:
-                    occupancy[zone_id]["track_ids"].add(detection.track_id)
-    return occupancy
-
-
 def _append_clip_frame(clip, frame):
     path = clip["path"] / f"frame-{clip['index']:04d}.jpg"
     ok, encoded = cv2.imencode(".jpg", frame)
@@ -126,15 +109,10 @@ def _append_clip_frame(clip, frame):
         clip["index"] += 1
 
 
-def _summary(classes):
-    person, vehicle = "person" in classes, bool(classes & VEHICLE_CLASSES)
-    return "person + vehicle" if person and vehicle else "vehicle" if vehicle else "person" if person else "object"
-
-
 def _start_incident(session_id, zone_id, occupancy, buffered, frame, source, number, video_fps):
     detections = occupancy["detections"]
     best = max(detections, key=lambda item: item.confidence)
-    event = DEMO_EVENTS.add(session_id, zone_id, _summary(occupancy["classes"]), best.confidence, best.bbox, {
+    event = DEMO_EVENTS.add(session_id, zone_id, incident_summary(occupancy["classes"]), best.confidence, best.bbox, {
         "event_type": "zone_occupancy", "grouping": "continuous_zone_occupancy", "status": "open",
         "start_frame": number, "end_frame": None, "duration_seconds": None, "source_video": source.name,
         "object_classes": sorted(occupancy["classes"]), "track_ids": sorted(occupancy["track_ids"]),
@@ -202,14 +180,14 @@ def stream_frames(session_id, path):
                 cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
                 cv2.putText(frame, f"{detection.object_class} #{detection.track_id or '?'} {detection.confidence:.2f}", (x1, max(20, y1 - 8)), cv2.FONT_HERSHEY_SIMPLEX, .55, color, 2)
             _draw_zones(frame, session_id)
-            occupancy = _zone_occupancy(zones, detections)
+            occupancy_by_zone = occupancy(zones, detections)
             for zone_id, incident in list(active.items()):
                 _append_clip_frame(incident, frame)
-                current = occupancy.get(zone_id, {"detections": [], "classes": set(), "track_ids": set()})
+                current = occupancy_by_zone.get(zone_id, {"detections": [], "classes": set(), "track_ids": set()})
                 if current["detections"]: _update_incident(incident, current, number)
                 elif number - incident["last_occupied_frame"] >= incident["clear_frames"]:
                     _finalize_incident(incident, number); del active[zone_id]
-            for zone_id, current in occupancy.items():
+            for zone_id, current in occupancy_by_zone.items():
                 if current["detections"] and zone_id not in active:
                     active[zone_id] = _start_incident(
                         session_id,

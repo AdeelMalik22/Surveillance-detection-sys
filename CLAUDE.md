@@ -10,14 +10,14 @@ This repository is an AI surveillance MVP built with FastAPI, OpenCV, Ultralytic
 - `app/capture.py`: frame capture and camera reconnect logic.
 - `app/detector.py`: YOLO detection and ByteTrack integration.
 - `app/pipeline.py`: reusable capture-to-annotation processing loop.
-- `app/zones.py`: zone entry logic.
+- `app/zones.py`: shared polygon occupancy calculation and class summaries.
 - `app/events.py`: SQLite event persistence.
 - `app/services/surveillance.py`: uploaded-video workflow.
 - `app/web/`: dashboard and upload/stream routes.
 
 ## Current limitation
 
-The configured-camera path starts `CaptureWorker` instances but does not yet connect them to `Detector`, `ZoneEngine`, or `EventStore`. The next major change should implement that live pipeline and unify it with the uploaded-video workflow. Avoid adding another independent processing path.
+The configured-camera path starts `CaptureWorker` instances but does not yet connect them to `Detector`, shared occupancy processing, or `EventStore`. The uploaded-video workflow now uses the shared occupancy calculation and incident semantics. The next major change is to connect the live pipeline to the same incident lifecycle. Avoid adding another independent processing path.
 
 ## Development rules
 
