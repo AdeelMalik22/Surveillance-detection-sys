@@ -1,20 +1,40 @@
 from contextlib import asynccontextmanager
-from pathlib import Path
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response
-from pydantic import BaseModel
-from .capture import CaptureWorker
-from .config import Settings, ZoneConfig, load_settings
-from .detector import Detector
-from .events import EventStore
-from .incidents import IncidentManager
-from .pipeline import ProcessingPipeline
-from .web.routes import register_session_zone, router as web_router, unregister_session_zone
-from .zones import incident_summary, occupancy
+from .processing.capture import CaptureWorker
+from .core.config import Settings, ZoneConfig, load_settings
+from .processing.detector import Detector
+from .infrastructure.events import CameraStore, EventStore
+from .processing.incidents import IncidentManager
+from .processing.pipeline import ProcessingPipeline
+from .web.routes import router as web_router
+from .processing.zones import incident_summary, occupancy
+from .services import surveillance
+from .api.camera import router as camera_router
+from .api.event import router as event_router
+from .api.system import router as system_router
+from .api.zone import router as zone_router
 
-settings: Settings = load_settings(); store = EventStore(settings.database); workers = {}; pipelines = {}; incidents = {}
-zones = {camera.id: {zone.id: zone for zone in camera.zones} for camera in settings.cameras}
+settings: Settings = load_settings(); store = EventStore(settings.database); camera_store = CameraStore(store.db)
+# Keep uploaded-video and configured-camera workflows on the same database.
+surveillance.DEMO_EVENTS = store
+surveillance.CAMERAS = camera_store
+workers = {}; pipelines = {}; incidents = {}
+zones = {camera.id: {} for camera in settings.cameras}
+
+
+def _load_camera_configuration():
+    """Persist configured cameras and merge their saved zones with YAML zones."""
+    for camera in settings.cameras:
+        camera_store.add_camera(camera.id, camera.id, camera.url, camera.url, source_type="live")
+        saved_zones = camera_store.list_zones(camera.id)
+        configured = {zone.id: zone for zone in camera.zones}
+        for saved in saved_zones:
+            configured[saved["id"]] = ZoneConfig(id=saved["id"], polygon=saved["polygon"])
+        zones[camera.id] = configured
+
+
+_load_camera_configuration()
 
 
 def _incident_callbacks(camera_id):
@@ -81,45 +101,17 @@ async def lifespan(_):
 
 app = FastAPI(title="AI Surveillance MVP", version="0.1.0", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+# Store configuration and persistence handles immediately. Worker collections
+# are populated by lifespan, but API handlers can safely access the store even
+# while camera startup is still in progress.
+app.state.settings = settings
+app.state.store = store
+app.state.camera_store = camera_store
+app.state.workers = workers
+app.state.pipelines = pipelines
+app.state.zones = zones
 app.include_router(web_router)
-
-@app.get("/health")
-def health(): return {"status": "ok", "model": settings.model, "model_loaded": Path(settings.model).exists()}
-
-@app.get("/status")
-def status(): return {"model": settings.model, "cameras": [worker.status.__dict__ for worker in workers.values()]}
-
-@app.get("/events")
-def events(limit: int = Query(50, ge=1, le=500), offset: int = Query(0, ge=0), camera_id: str | None = None, zone_id: str | None = None, object_class: str | None = None, from_: str | None = Query(None, alias="from"), to: str | None = None):
-    return store.list(limit, offset, camera_id=camera_id, zone_id=zone_id, object_class=object_class, **{"from": from_, "to": to})
-
-@app.get("/cameras/{camera_id}/snapshot")
-def snapshot(camera_id: str):
-    worker = workers.get(camera_id)
-    pipeline = pipelines.get(camera_id)
-    if not pipeline or pipeline.latest_annotated() is None: raise HTTPException(404, "no snapshot available")
-    import cv2
-    ok, encoded = cv2.imencode(".jpg", pipeline.latest_annotated())
-    if not ok: raise HTTPException(500, "snapshot encoding failed")
-    return Response(encoded.tobytes(), media_type="image/jpeg")
-
-class ZoneRequest(BaseModel):
-    camera_id: str
-    zone: ZoneConfig
-
-@app.get("/zones")
-def get_zones(): return {camera_id: list(camera_zones.values()) for camera_id, camera_zones in zones.items()}
-
-@app.post("/zones", status_code=201)
-def add_zone(request: ZoneRequest):
-    if request.camera_id not in zones: zones[request.camera_id] = {}
-    if request.zone.id in zones[request.camera_id]: raise HTTPException(409, "zone already exists")
-    zones[request.camera_id][request.zone.id] = request.zone
-    register_session_zone(request.camera_id, request.zone.id, request.zone.polygon)
-    return request.zone
-
-@app.delete("/zones/{camera_id}/{zone_id}", status_code=204)
-def delete_zone(camera_id: str, zone_id: str):
-    if zone_id not in zones.get(camera_id, {}): raise HTTPException(404, "zone not found")
-    del zones[camera_id][zone_id]
-    unregister_session_zone(camera_id, zone_id)
+app.include_router(system_router)
+app.include_router(event_router)
+app.include_router(zone_router)
+app.include_router(camera_router)

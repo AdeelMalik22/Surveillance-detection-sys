@@ -7,9 +7,9 @@ import cv2
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.capture import CaptureWorker
-from app.detector import Detector
-from app.pipeline import ProcessingPipeline
+from app.processing.capture import CaptureWorker
+from app.processing.detector import Detector
+from app.processing.pipeline import ProcessingPipeline
 
 parser = argparse.ArgumentParser(description="Run YOLO detection on a video or RTSP source")
 parser.add_argument("--source", required=True)
@@ -21,7 +21,7 @@ parser.add_argument("--output", default="annotated.jpg")
 args = parser.parse_args()
 
 worker = CaptureWorker("detection-test", args.source, target_fps=8)
-detector = Detector(args.model, args.confidence, image_size=args.image_size, tracker=str(Path(__file__).resolve().parents[1] / "app" / "bytetrack.yaml"))
+detector = Detector(args.model, args.confidence, image_size=args.image_size, tracker=str(Path(__file__).resolve().parents[1] / "app" / "processing" / "bytetrack.yaml"))
 pipeline = ProcessingPipeline(worker, detector, target_fps=8)
 worker.start()
 pipeline.start()

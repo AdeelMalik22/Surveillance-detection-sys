@@ -10,10 +10,10 @@ from pathlib import Path
 from threading import Event
 
 import cv2
-from ..detector import Detector
-from ..events import CameraStore, EventStore
-from ..incidents import IncidentManager
-from ..zones import VEHICLE_CLASSES, incident_summary, occupancy
+from ..processing.detector import Detector
+from ..infrastructure.events import CameraStore, EventStore
+from ..processing.incidents import IncidentManager
+from ..processing.zones import VEHICLE_CLASSES, incident_summary, occupancy
 
 UPLOADS = Path(tempfile.gettempdir()) / "surveillance-mvp-uploads"
 CLIPS = Path(tempfile.gettempdir()) / "surveillance-mvp-event-clips"
@@ -48,6 +48,9 @@ def upload_session(filename: str, source) -> dict:
 
 def delete_session(session_id: str):
     stop_stream(session_id)
+    camera = CAMERAS.get_camera(session_id)
+    if not camera or camera.get("source_type") != "upload":
+        return None
     path = CAMERAS.delete_camera(session_id)
     if path is None:
         return None
@@ -80,7 +83,8 @@ def list_cameras():
 
 
 def get_camera(session_id):
-    return CAMERAS.get_camera(session_id)
+    camera = CAMERAS.get_camera(session_id)
+    return camera if camera and camera.get("source_type") == "upload" else None
 
 
 def stop_stream(session_id: str) -> bool:
@@ -162,7 +166,7 @@ def stream_frames(session_id, path):
         model_path="yolov8n.pt",
         confidence=0.3,
         image_size=640,
-        tracker=str(Path(__file__).parents[1] / "bytetrack.yaml"),
+        tracker=str(Path(__file__).parents[1] / "processing" / "bytetrack.yaml"),
     )
     stop_request = Event()
     STOP_REQUESTS[session_id] = stop_request
@@ -205,26 +209,3 @@ def stream_frames(session_id, path):
         incidents.close_all(number)
         STOP_REQUESTS.pop(session_id, None)
         capture.release()
-
-
-def truncate_events():
-    row = DEMO_EVENTS.db.execute("SELECT COUNT(*) AS count FROM events").fetchone()
-    deleted = int(row["count"])
-    DEMO_EVENTS.db.execute("DELETE FROM events"); DEMO_EVENTS.db.commit()
-    for path in CLIPS.glob("event-*"):
-        if path.is_dir(): shutil.rmtree(path)
-    return deleted
-
-
-def event_clip_fps(event_id: int) -> float:
-    row = DEMO_EVENTS.db.execute(
-        "SELECT metadata FROM events WHERE id = ?",
-        (event_id,),
-    ).fetchone()
-    if not row:
-        return float(CLIP_FPS)
-
-    import json
-
-    metadata = json.loads(row["metadata"] or "{}")
-    return float(metadata.get("clip_fps", CLIP_FPS))

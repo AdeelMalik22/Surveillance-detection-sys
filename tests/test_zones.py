@@ -1,5 +1,5 @@
-from app.zones import Detection, ZoneEngine, incident_summary, occupancy
-from app.incidents import IncidentManager
+from app.processing.zones import Detection, ZoneEngine, incident_summary, occupancy
+from app.processing.incidents import IncidentManager
 
 def test_zone_entry_is_emitted_once_until_exit():
     engine = ZoneEngine({"z": [[0, 0], [10, 0], [10, 10], [0, 10]]})

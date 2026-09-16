@@ -1,5 +1,5 @@
-from app.detector import DetectionResult
-from app.tracking import IoUTracker
+from app.processing.detector import DetectionResult
+from app.processing.tracking import IoUTracker
 
 
 def test_iou_tracker_keeps_identity_between_frames():

@@ -44,18 +44,21 @@ class EventStore:
 class CameraStore:
     def __init__(self, connection):
         self.db = connection
-        self.db.execute("CREATE TABLE IF NOT EXISTS cameras (id TEXT PRIMARY KEY, filename TEXT NOT NULL, path TEXT NOT NULL, stream_url TEXT NOT NULL, created_at TEXT NOT NULL)")
+        self.db.execute("CREATE TABLE IF NOT EXISTS cameras (id TEXT PRIMARY KEY, filename TEXT NOT NULL, path TEXT NOT NULL, stream_url TEXT NOT NULL, source_type TEXT NOT NULL DEFAULT 'upload', created_at TEXT NOT NULL)")
+        columns = {row["name"] for row in self.db.execute("PRAGMA table_info(cameras)").fetchall()}
+        if "source_type" not in columns:
+            self.db.execute("ALTER TABLE cameras ADD COLUMN source_type TEXT NOT NULL DEFAULT 'upload'")
         self.db.execute("CREATE TABLE IF NOT EXISTS camera_zones (camera_id TEXT NOT NULL, zone_id TEXT NOT NULL, polygon TEXT NOT NULL, created_at TEXT NOT NULL, PRIMARY KEY(camera_id, zone_id))")
         self.db.commit()
 
-    def add_camera(self, camera_id, filename, path, stream_url):
+    def add_camera(self, camera_id, filename, path, stream_url, source_type="upload"):
         created_at = datetime.now(timezone.utc).isoformat()
-        self.db.execute("INSERT OR REPLACE INTO cameras(id,filename,path,stream_url,created_at) VALUES(?,?,?,?,?)", (camera_id, filename, path, stream_url, created_at))
+        self.db.execute("INSERT OR REPLACE INTO cameras(id,filename,path,stream_url,source_type,created_at) VALUES(?,?,?,?,?,?)", (camera_id, filename, path, stream_url, source_type, created_at))
         self.db.commit()
-        return {"session_id": camera_id, "filename": filename, "path": path, "stream_url": stream_url, "created_at": created_at}
+        return {"session_id": camera_id, "filename": filename, "path": path, "stream_url": stream_url, "source_type": source_type, "created_at": created_at}
 
     def list_cameras(self):
-        rows = self.db.execute("SELECT * FROM cameras ORDER BY created_at DESC").fetchall()
+        rows = self.db.execute("SELECT * FROM cameras WHERE source_type = 'upload' ORDER BY created_at DESC").fetchall()
         cameras = []
         for row in rows:
             zones = self.list_zones(row["id"])
@@ -66,7 +69,7 @@ class CameraStore:
         row = self.db.execute("SELECT * FROM cameras WHERE id = ?", (camera_id,)).fetchone()
         if not row:
             return None
-        return {"session_id": row["id"], "filename": row["filename"], "path": row["path"], "stream_url": row["stream_url"], "created_at": row["created_at"], "zones": self.list_zones(camera_id)}
+        return {"session_id": row["id"], "filename": row["filename"], "path": row["path"], "stream_url": row["stream_url"], "source_type": row["source_type"], "created_at": row["created_at"], "zones": self.list_zones(camera_id)}
 
     def delete_camera(self, camera_id):
         row = self.db.execute("SELECT path FROM cameras WHERE id = ?", (camera_id,)).fetchone()

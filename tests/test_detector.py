@@ -1,4 +1,4 @@
-from app.detector import Detector, SUPPORTED_CLASSES
+from app.processing.detector import Detector, SUPPORTED_CLASSES
 
 
 def test_supported_classes_are_person_and_vehicles():
