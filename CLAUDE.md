@@ -18,7 +18,7 @@ This repository is an AI surveillance MVP built with FastAPI, OpenCV, Ultralytic
 
 ## Current limitation
 
-The configured-camera path starts `CaptureWorker` instances but does not yet connect them to `Detector`, shared occupancy processing, or `EventStore`. The uploaded-video workflow now uses shared occupancy calculation and `IncidentManager` semantics. The next major change is to connect the live pipeline to the same incident lifecycle. Avoid adding another independent processing path.
+The configured-camera path now connects `CaptureWorker`, `ProcessingPipeline`, `Detector`, shared occupancy processing, `IncidentManager`, and `EventStore`. The uploaded-video workflow uses the same occupancy and incident semantics. The next major work is persisting live camera zones and adding end-to-end live event tests. Avoid adding another independent processing path.
 
 ## Development rules
 

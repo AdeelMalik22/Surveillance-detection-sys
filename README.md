@@ -6,7 +6,7 @@ FastAPI-based surveillance MVP for local videos and RTSP sources. The project in
 
 The uploaded-video workflow is the most complete path. It supports video upload and session management, YOLO detection for people and vehicles, ByteTrack tracking, shared polygon-zone occupancy detection, continuous incidents, SQLite events, event frame sequences, and an MJPEG browser stream.
 
-The configured-camera API in `app/main.py` currently starts capture workers and exposes camera status and snapshots. Its capture path is not yet connected to the detector, zone engine, or event store. Zones created through that API are held in memory and are lost when the application restarts.
+The configured-camera API now runs capture, YOLO/ByteTrack processing, shared zone occupancy, continuous incidents, and SQLite event persistence. Its snapshot endpoint returns the latest annotated frame. Zones created through that API are still held in memory and are lost when the application restarts.
 
 ## Next phase
 
@@ -16,7 +16,7 @@ Connect the live camera path:
 CaptureWorker -> Detector.track() -> ZoneEngine -> EventStore -> annotated output
 ```
 
-The occupancy calculation is shared in `app/zones.py`, and the continuous open/update/close lifecycle is shared in `app/incidents.py`. Uploaded-video events use this manager and close after five seconds of absence. The remaining integration work is to connect configured cameras to the same lifecycle, persist camera zones through the live API, and add end-to-end event tests. Production hardening should then address authentication, restricted CORS, resource cleanup, structured logging, model lifecycle management, and concurrent database access.
+The occupancy calculation is shared in `app/zones.py`, and the continuous open/update/close lifecycle is shared in `app/incidents.py`. Both uploaded videos and configured cameras use this manager and close incidents after five seconds of absence. The remaining integration work is to persist camera zones through the live API and add end-to-end live event tests. Production hardening should then address authentication, restricted CORS, resource cleanup, structured logging, model lifecycle management, and concurrent database access.
 
 ## Setup
 

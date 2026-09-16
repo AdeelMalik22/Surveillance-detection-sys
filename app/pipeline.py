@@ -12,10 +12,11 @@ from .detector import Detector
 
 
 class ProcessingPipeline:
-    def __init__(self, capture: CaptureWorker, detector: Detector, target_fps: float = 8):
+    def __init__(self, capture: CaptureWorker, detector: Detector, target_fps: float = 8, on_detections=None):
         self.capture, self.detector, self.interval = capture, detector, 1 / target_fps
+        self.on_detections = on_detections
         self._annotated = None; self._lock = threading.Lock(); self._stop = threading.Event(); self._thread = None
-        self.inference_fps = 0.0; self.last_error = None
+        self.inference_fps = 0.0; self.last_error = None; self.frame_number = 0
 
     def start(self):
         self._thread = threading.Thread(target=self._run, name=f"inference-{self.capture.camera_id}", daemon=True); self._thread.start()
@@ -31,6 +32,9 @@ class ProcessingPipeline:
             if frame is None: self._stop.wait(self.interval); continue
             try:
                 detections = self.detector.track(frame); annotated = frame.copy()
+                self.frame_number += 1
+                if self.on_detections is not None:
+                    self.on_detections(detections, frame, self.frame_number)
                 for detection in detections:
                     x1, y1, x2, y2 = map(int, detection.bbox); color = (0, 255, 0)
                     cv2.rectangle(annotated, (x1, y1), (x2, y2), color, 2)
