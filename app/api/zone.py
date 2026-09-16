@@ -19,16 +19,17 @@ def get_zones(request: Request):
 
 @router.post("", status_code=201)
 def add_zone(request: ZoneRequest, http_request: Request):
-    if request.camera_id not in http_request.app.state.zones:
-        raise HTTPException(404, "camera not found")
     try:
         return zone_service.create_zone(http_request.app.state.zones, http_request.app.state.camera_store, request.camera_id, request.zone)
+    except KeyError as exc:
+        raise HTTPException(404, str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(409, str(exc)) from exc
 
 
 @router.delete("/{camera_id}/{zone_id}", status_code=204)
 def delete_zone(camera_id: str, zone_id: str, request: Request):
-    if zone_id not in request.app.state.zones.get(camera_id, {}):
-        raise HTTPException(404, "zone not found")
-    zone_service.remove_zone(request.app.state.zones, request.app.state.camera_store, camera_id, zone_id)
+    try:
+        zone_service.remove_zone(request.app.state.zones, request.app.state.camera_store, camera_id, zone_id)
+    except KeyError as exc:
+        raise HTTPException(404, str(exc)) from exc
