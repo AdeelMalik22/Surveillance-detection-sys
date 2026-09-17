@@ -1,8 +1,10 @@
 from __future__ import annotations
 import os, re
+from urllib.parse import urlparse
 from pathlib import Path
 import yaml
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
+from shapely.geometry import Polygon
 
 _ENV = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
 
@@ -13,6 +15,11 @@ class ZoneConfig(BaseModel):
     @classmethod
     def valid_polygon(cls, value):
         if any(len(point) != 2 for point in value): raise ValueError("polygon points must be [x, y]")
+        polygon = Polygon(value)
+        if not polygon.is_valid:
+            raise ValueError("polygon must not self-intersect and must be geometrically valid")
+        if polygon.area <= 0:
+            raise ValueError("polygon must enclose a non-zero area")
         return value
 
 class CameraConfig(BaseModel):
@@ -29,6 +36,22 @@ class Settings(BaseModel):
     zone_point: str = "bottom_center"
     database: str = "events.db"
     cameras: list[CameraConfig] = []
+
+    @model_validator(mode="after")
+    def validate_configuration(self):
+        camera_ids = [camera.id for camera in self.cameras]
+        if len(camera_ids) != len(set(camera_ids)):
+            raise ValueError("camera IDs must be unique")
+        for camera in self.cameras:
+            parsed = urlparse(camera.url)
+            if parsed.scheme in {"rtsp", "rtsps"} and not parsed.netloc:
+                raise ValueError(f"camera '{camera.id}' has an invalid RTSP URL")
+            zone_ids = [zone.id for zone in camera.zones]
+            if len(zone_ids) != len(set(zone_ids)):
+                raise ValueError(f"camera '{camera.id}' has duplicate zone IDs")
+        if self.target_fps <= 0 or self.target_fps > 60:
+            raise ValueError("target_fps must be greater than 0 and no more than 60")
+        return self
     @field_validator("zone_point")
     @classmethod
     def valid_point(cls, value):
@@ -49,4 +72,7 @@ def load_settings(path="config.yaml"):
         file = Path(__file__).parents[2] / path
     if not file.exists(): return Settings()
     with file.open(encoding="utf-8") as handle: data = yaml.safe_load(handle) or {}
-    return Settings.model_validate(_expand(data))
+    settings = Settings.model_validate(_expand(data))
+    if not Path(settings.model).expanduser().is_file():
+        raise ValueError(f"model file does not exist: {settings.model}")
+    return settings
