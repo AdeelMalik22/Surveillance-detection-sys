@@ -1,4 +1,8 @@
 from contextlib import asynccontextmanager
+from collections import deque
+import shutil
+from pathlib import Path
+import cv2
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from .processing.capture import CaptureWorker
@@ -20,6 +24,7 @@ settings: Settings = load_settings(); store = EventStore(settings.database); cam
 surveillance.DEMO_EVENTS = store
 surveillance.CAMERAS = camera_store
 workers = {}; pipelines = {}; incidents = {}
+live_buffers = {}; live_frames = {}
 zones = {camera.id: {} for camera in settings.cameras}
 
 
@@ -44,11 +49,22 @@ def _incident_callbacks(camera_id):
             "event_type": "zone_occupancy", "grouping": "continuous_zone_occupancy", "status": "open",
             "start_frame": frame_number, "end_frame": None, "duration_seconds": None,
             "object_classes": sorted(current["classes"]), "track_ids": sorted(current["track_ids"]),
-            "max_occupancy": len(current["detections"]),
+            "max_occupancy": len(current["detections"]), "clip_status": "recording",
+            "clip_type": "image_sequence", "clip_fps": settings.target_fps,
+            "clip_frame_count": 0, "clip_url": f"/api/events/{{event_id}}/clip",
         })
-        return {"event_id": event["id"], "start_frame": frame_number,
+        clip_path = surveillance.CLIPS / f"event-{event['id']}"
+        if clip_path.exists(): shutil.rmtree(clip_path)
+        clip_path.mkdir(parents=True)
+        incident = {"event_id": event["id"], "start_frame": frame_number,
                 "last_occupied_frame": frame_number, "classes": set(current["classes"]),
-                "track_ids": set(current["track_ids"]), "max_occupancy": len(current["detections"])}
+                "track_ids": set(current["track_ids"]), "max_occupancy": len(current["detections"]),
+                "clip_path": clip_path, "clip_index": 0}
+        for buffered in live_buffers.get(camera_id, ()):
+            _save_live_frame(incident, buffered)
+        _save_live_frame(incident, live_frames[camera_id])
+        store.update_metadata(event["id"], clip_url=f"/api/events/{event['id']}/clip")
+        return incident
 
     def update_incident(incident, current, frame_number):
         incident["last_occupied_frame"] = frame_number
@@ -62,9 +78,28 @@ def _incident_callbacks(camera_id):
         store.update_metadata(incident["event_id"], status="closed", end_frame=frame_number,
                               duration_seconds=round(max(0, (frame_number - incident["start_frame"]) / settings.target_fps), 2),
                               object_classes=sorted(incident["classes"]), track_ids=sorted(incident["track_ids"]),
-                              max_occupancy=incident["max_occupancy"])
+                              max_occupancy=incident["max_occupancy"], clip_status="ready",
+                              clip_frame_count=incident["clip_index"])
 
     return open_incident, update_incident, close_incident
+
+
+def _save_live_frame(incident, frame):
+    path = incident["clip_path"] / f"frame-{incident['clip_index']:04d}.jpg"
+    ok, encoded = cv2.imencode(".jpg", frame)
+    if ok:
+        path.write_bytes(encoded.tobytes())
+        incident["clip_index"] += 1
+
+
+def _process_live_frame(camera_id, detections, frame, frame_number):
+    live_frames[camera_id] = frame
+    incidents[camera_id].process(
+        occupancy({zone_id: zone.polygon for zone_id, zone in zones.get(camera_id, {}).items()}, detections),
+        frame,
+        frame_number,
+    )
+    live_buffers[camera_id].append(frame.copy())
 
 @asynccontextmanager
 async def lifespan(_):
@@ -79,16 +114,16 @@ async def lifespan(_):
             on_open=open_incident,
             on_update=update_incident,
             on_close=close_incident,
+            on_frame=_save_live_frame,
         )
         incidents[camera.id] = incident_manager
+        live_buffers[camera.id] = deque(maxlen=max(1, round(2 * settings.target_fps)))
         pipelines[camera.id] = ProcessingPipeline(
             worker,
             detector,
             settings.target_fps,
-            on_detections=lambda detections, frame, frame_number, camera_id=camera.id: incidents[camera_id].process(
-                occupancy({zone_id: zone.polygon for zone_id, zone in zones.get(camera_id, {}).items()}, detections),
-                frame,
-                frame_number,
+            on_detections=lambda detections, frame, frame_number, camera_id=camera.id: _process_live_frame(
+                camera_id, detections, frame, frame_number
             ),
         )
         workers[camera.id] = worker
