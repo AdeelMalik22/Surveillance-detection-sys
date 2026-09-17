@@ -22,7 +22,7 @@ def add_zone(request: ZoneRequest, http_request: Request):
     try:
         return zone_service.create_zone(http_request.app.state.zones, http_request.app.state.camera_store, request.camera_id, request.zone)
     except KeyError as exc:
-        raise HTTPException(404, str(exc)) from exc
+        raise HTTPException(404, str(exc).strip('"')) from exc
     except ValueError as exc:
         raise HTTPException(409, str(exc)) from exc
 

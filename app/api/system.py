@@ -22,6 +22,11 @@ def status(request: Request):
 
 @router.get("/cameras/{camera_id}/snapshot")
 def snapshot(camera_id: str, request: Request):
+    worker = request.app.state.workers.get(camera_id)
+    if worker is None:
+        raise HTTPException(404, "camera not found")
+    if not worker.status.connected:
+        raise HTTPException(503, "camera is unavailable")
     pipeline = request.app.state.pipelines.get(camera_id)
     frame = pipeline.latest_annotated() if pipeline else None
     if frame is None:
@@ -34,8 +39,11 @@ def snapshot(camera_id: str, request: Request):
 
 @router.get("/cameras/{camera_id}/stream")
 def stream(camera_id: str, request: Request):
-    if camera_id not in request.app.state.pipelines:
+    worker = request.app.state.workers.get(camera_id)
+    if worker is None:
         raise HTTPException(404, "camera not found")
+    if not worker.status.connected:
+        raise HTTPException(503, "camera is unavailable")
 
     def frames():
         pipeline = request.app.state.pipelines[camera_id]

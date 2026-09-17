@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Query, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from ..services import events as event_service
 
 router = APIRouter(prefix="/events", tags=["events"])
@@ -20,8 +20,11 @@ def events(
     from_: str | None = Query(None, alias="from"),
     to: str | None = None,
 ):
-    return event_service.list_events(
-        request.app.state.store,
-        limit, offset, camera_id=camera_id, zone_id=zone_id,
-        object_class=object_class, **{"from": from_, "to": to}
-    )
+    try:
+        return event_service.list_events(
+            request.app.state.store,
+            limit, offset, camera_id=camera_id, zone_id=zone_id,
+            object_class=object_class, **{"from": from_, "to": to}
+        )
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc

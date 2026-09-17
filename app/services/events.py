@@ -2,12 +2,32 @@
 
 import json
 import shutil
+from datetime import datetime
 
 from . import surveillance
 
 
 def list_events(store, limit=50, offset=0, **filters):
+    validate_filters(filters)
     return store.list(limit, offset, **filters)
+
+
+def validate_filters(filters):
+    for name in ("from", "to"):
+        value = filters.get(name)
+        if value:
+            try:
+                datetime.fromisoformat(value.replace("Z", "+00:00"))
+            except ValueError as exc:
+                raise ValueError(f"invalid '{name}' timestamp; use ISO-8601 format") from exc
+    if filters.get("from") and filters.get("to"):
+        start = datetime.fromisoformat(filters["from"].replace("Z", "+00:00"))
+        end = datetime.fromisoformat(filters["to"].replace("Z", "+00:00"))
+        if start > end:
+            raise ValueError("'from' timestamp must be earlier than or equal to 'to'")
+    allowed_classes = {"person", "car", "motorcycle", "bus", "truck", "person + vehicle", "vehicle", "object"}
+    if filters.get("object_class") and filters["object_class"] not in allowed_classes:
+        raise ValueError("invalid object_class filter")
 
 
 def clear_events(store):
