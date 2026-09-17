@@ -17,7 +17,22 @@ def health(request: Request):
 @router.get("/status")
 def status(request: Request):
     settings = request.app.state.settings
-    return {"model": settings.model, "cameras": [worker.status.__dict__ for worker in request.app.state.workers.values()]}
+    cameras = []
+    for camera_id, worker in request.app.state.workers.items():
+        capture_status = worker.status
+        last_frame_age = None
+        if capture_status.last_frame_at is not None:
+            last_frame_age = round(max(0, time.time() - capture_status.last_frame_at), 2)
+        pipeline = request.app.state.pipelines.get(camera_id)
+        cameras.append({
+            "camera_id": camera_id,
+            "connected": capture_status.connected,
+            "capture_fps": round(capture_status.capture_fps, 2),
+            "inference_fps": round(pipeline.inference_fps, 2) if pipeline else 0.0,
+            "last_error": capture_status.last_error,
+            "last_frame_age_seconds": last_frame_age,
+        })
+    return {"model": settings.model, "cameras": cameras}
 
 
 @router.get("/cameras/{camera_id}/snapshot")

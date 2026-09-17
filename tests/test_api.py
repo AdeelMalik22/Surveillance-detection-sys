@@ -22,7 +22,10 @@ def make_client(tmp_path):
     app.state.settings = Settings(model="test-model.pt")
     app.state.store = store
     app.state.camera_store = camera_store
-    app.state.workers = {"camera-1": SimpleNamespace(status=SimpleNamespace(camera_id="camera-1", connected=False))}
+    app.state.workers = {"camera-1": SimpleNamespace(status=SimpleNamespace(
+        camera_id="camera-1", connected=False, capture_fps=0.0,
+        last_frame_at=None, last_error="test disconnected",
+    ))}
     app.state.pipelines = {}
     app.state.zones = {"camera-1": {}}
     return TestClient(app), store
@@ -37,7 +40,14 @@ def test_system_event_and_zone_api_endpoints(tmp_path):
 
     status = client.get("/status")
     assert status.status_code == 200
-    assert status.json()["cameras"][0]["camera_id"] == "camera-1"
+    assert status.json()["cameras"][0] == {
+        "camera_id": "camera-1",
+        "connected": False,
+        "capture_fps": 0.0,
+        "inference_fps": 0.0,
+        "last_error": "test disconnected",
+        "last_frame_age_seconds": None,
+    }
 
     assert client.get("/events").status_code == 200
     assert client.get("/zones").json() == {"camera-1": []}
